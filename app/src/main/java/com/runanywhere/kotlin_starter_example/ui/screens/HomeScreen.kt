@@ -1,5 +1,6 @@
 package com.runanywhere.kotlin_starter_example.ui.screens
 
+import android.content.Intent
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -9,14 +10,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
+import com.runanywhere.kotlin_starter_example.data.SoundType
+import com.runanywhere.kotlin_starter_example.services.AudioForegroundService
 import com.runanywhere.kotlin_starter_example.viewmodel.MainViewModel
 
 @Composable
@@ -26,8 +31,14 @@ fun HomeScreen(
     onSettings: () -> Unit,
     onHaptics: () -> Unit
 ) {
+    val context = LocalContext.current
     val sound by viewModel.currentSound.collectAsState()
     var isOn by remember { mutableStateOf(false) }
+
+    // Auto-trigger haptics when sound detected
+    LaunchedEffect(Unit) {
+        viewModel.observeSounds(context)
+    }
 
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
@@ -75,9 +86,7 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(20.dp))
                     .background(
-                        Brush.linearGradient(
-                            listOf(softBlueStart, softBlueEnd)
-                        )
+                        Brush.linearGradient(listOf(softBlueStart, softBlueEnd))
                     )
                     .padding(horizontal = 24.dp, vertical = 28.dp)
             ) {
@@ -120,7 +129,15 @@ fun HomeScreen(
                                 listOf(Color(0xFFDDE3EE), Color(0xFFB8C0D0))
                             )
                     )
-                    .clickable { isOn = !isOn }
+                    .clickable {
+                        isOn = !isOn
+                        val intent = Intent(context, AudioForegroundService::class.java)
+                        if (isOn) {
+                            context.startForegroundService(intent)
+                        } else {
+                            context.stopService(intent)
+                        }
+                    }
             ) {
                 Icon(
                     imageVector = if (isOn) Icons.Default.Mic else Icons.Default.MicOff,
@@ -236,8 +253,7 @@ private fun QuickActionCard(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-        modifier = modifier
-            .clickable(onClick = onClick)
+        modifier = modifier.clickable(onClick = onClick)
     ) {
         Column(
             modifier = Modifier.padding(vertical = 16.dp),

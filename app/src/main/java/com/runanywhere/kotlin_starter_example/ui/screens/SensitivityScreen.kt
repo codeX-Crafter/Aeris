@@ -20,7 +20,7 @@ import com.runanywhere.kotlin_starter_example.data.SoundType
 fun SensitivityScreen(onBack: () -> Unit) {
 
     val sensitivities = remember {
-        SoundType.values().associate { it to mutableStateOf(0.5f) }
+        SoundType.values().associateWith { mutableStateOf(0.5f) }
     }
     var adaptiveMode by remember { mutableStateOf(false) }
 
@@ -30,6 +30,7 @@ fun SensitivityScreen(onBack: () -> Unit) {
             .background(Color(0xFFF8F9FA))
             .verticalScroll(rememberScrollState())
     ) {
+
         // ── Header ────────────────────────────────────────────────
         Box(
             modifier = Modifier
@@ -55,7 +56,7 @@ fun SensitivityScreen(onBack: () -> Unit) {
 
         Spacer(Modifier.height(20.dp))
 
-        // ── Adaptive Mode Card ────────────────────────────────────
+        // ── Adaptive Mode ─────────────────────────────────────────
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -63,7 +64,7 @@ fun SensitivityScreen(onBack: () -> Unit) {
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(
                 containerColor = if (adaptiveMode)
-                    Color(0xFF6FB1FC).copy(alpha = 0.1f) else Color.White
+                    Color(0xFF6FB1FC).copy(alpha = 0.10f) else Color.White
             ),
             elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
         ) {
@@ -122,13 +123,12 @@ fun SensitivityScreen(onBack: () -> Unit) {
 
         Spacer(Modifier.height(8.dp))
 
-        // ── Per-sound Cards ───────────────────────────────────────
         SoundType.values().forEach { sound ->
-            val value = sensitivities[sound]!!
+            val valueState = sensitivities[sound]!!
             SensitivityCard(
                 sound = sound,
-                value = value.value,
-                onChange = { value.value = it }
+                value = valueState.value,
+                onChange = { valueState.value = it }
             )
             Spacer(Modifier.height(12.dp))
         }
@@ -227,10 +227,10 @@ private fun SensitivityCard(
 }
 
 private fun soundMeta(sound: SoundType): Pair<ImageVector, String> = when (sound) {
-    SoundType.SIREN -> Icons.Default.LocalFireDepartment to "Siren"
-    SoundType.HORN -> Icons.Default.DirectionsCar to "Car Horn"
-    SoundType.ALARM -> Icons.Default.Alarm to "Alarm"
-    SoundType.DOORBELL -> Icons.Default.Doorbell to "Doorbell"
-    SoundType.VOICE -> Icons.Default.RecordVoiceOver to "Voice"
-    else -> Icons.Default.VolumeUp to sound.name
+    SoundType.SIREN    -> Icons.Default.LocalFireDepartment to "Siren"
+    SoundType.HORN     -> Icons.Default.DirectionsCar       to "Car Horn"
+    SoundType.ALARM    -> Icons.Default.Alarm               to "Alarm"
+    SoundType.DOORBELL -> Icons.Default.Doorbell            to "Doorbell"
+    SoundType.VOICE    -> Icons.Default.RecordVoiceOver     to "Voice"
+    else               -> Icons.Default.VolumeUp            to sound.name
 }

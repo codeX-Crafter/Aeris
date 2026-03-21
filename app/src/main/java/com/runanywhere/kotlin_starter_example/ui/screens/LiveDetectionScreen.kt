@@ -9,13 +9,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
+import com.runanywhere.kotlin_starter_example.ui.components.WaveformView
 import com.runanywhere.kotlin_starter_example.viewmodel.MainViewModel
-import kotlin.random.Random
 
 @Composable
 fun LiveDetectionScreen(
@@ -28,19 +29,10 @@ fun LiveDetectionScreen(
     val accentColor = if (isAlert) Color(0xFFFF6B6B) else Color(0xFF6FB1FC)
     val confidence = if (isAlert) 92 else 0
 
-    // Waveform animation
-    val infiniteTransition = rememberInfiniteTransition(label = "wave")
-    val wavePhase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(800, easing = LinearEasing)),
-        label = "wavePhase"
-    )
-
     val recentHistory = listOf(
-        "Siren" to "Just now",
+        "Siren"    to "Just now",
         "Car Horn" to "2 min ago",
-        "Voice" to "5 min ago"
+        "Voice"    to "5 min ago"
     )
 
     Column(
@@ -49,6 +41,7 @@ fun LiveDetectionScreen(
             .background(Color(0xFFF8F9FA))
             .verticalScroll(rememberScrollState())
     ) {
+
         // ── Header ────────────────────────────────────────────────
         Box(
             modifier = Modifier
@@ -60,11 +53,7 @@ fun LiveDetectionScreen(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) {
-                    Icon(
-                        Icons.Default.ArrowBack,
-                        contentDescription = "Back",
-                        tint = Color.White
-                    )
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
                 }
                 Spacer(Modifier.width(8.dp))
                 Text(
@@ -107,16 +96,13 @@ fun LiveDetectionScreen(
                         modifier = Modifier.size(36.dp)
                     )
                 }
-
                 Spacer(Modifier.height(16.dp))
-
                 Text(
                     text = sound?.name?.uppercase() ?: "NO SOUND",
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
                     color = if (isAlert) Color(0xFFFF6B6B) else Color(0xFF1A2340)
                 )
-
                 Text(
                     text = if (isAlert) "Sound detected nearby" else "Monitoring environment…",
                     fontSize = 14.sp,
@@ -154,7 +140,7 @@ fun LiveDetectionScreen(
                         color = when {
                             confidence >= 80 -> Color(0xFF6BCB77)
                             confidence >= 50 -> Color(0xFFFFD166)
-                            else -> Color(0xFFB0B0B0)
+                            else            -> Color(0xFFB0B0B0)
                         }
                     )
                 }
@@ -168,7 +154,7 @@ fun LiveDetectionScreen(
                     color = when {
                         confidence >= 80 -> Color(0xFF6BCB77)
                         confidence >= 50 -> Color(0xFFFFD166)
-                        else -> Color(0xFFB0B0B0)
+                        else            -> Color(0xFFB0B0B0)
                     },
                     trackColor = Color(0xFFEEF0F5)
                 )
@@ -178,11 +164,7 @@ fun LiveDetectionScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     listOf("LOW", "BALANCED", "HIGH").forEach { label ->
-                        Text(
-                            text = label,
-                            fontSize = 10.sp,
-                            color = Color(0xFFB0B0B0)
-                        )
+                        Text(text = label, fontSize = 10.sp, color = Color(0xFFB0B0B0))
                     }
                 }
             }
@@ -206,14 +188,18 @@ fun LiveDetectionScreen(
                     fontWeight = FontWeight.Medium,
                     color = Color(0xFF1A2340)
                 )
-                Spacer(Modifier.height(16.dp))
-                WaveformBars(phase = wavePhase, color = accentColor)
+                Spacer(Modifier.height(12.dp))
+                // ✅ Replaced WaveformBars with WaveformView
+                WaveformView(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    color = accentColor
+                )
             }
         }
 
         Spacer(Modifier.height(20.dp))
 
-        // ── History ───────────────────────────────────────────────
+        // ── Recent History ────────────────────────────────────────
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -248,63 +234,17 @@ fun LiveDetectionScreen(
                                     )
                             )
                             Spacer(Modifier.width(10.dp))
-                            Text(
-                                text = label,
-                                fontSize = 14.sp,
-                                color = Color(0xFF1A2340)
-                            )
+                            Text(text = label, fontSize = 14.sp, color = Color(0xFF1A2340))
                         }
-                        Text(
-                            text = time,
-                            fontSize = 12.sp,
-                            color = Color(0xFF6B7A9A)
-                        )
+                        Text(text = time, fontSize = 12.sp, color = Color(0xFF6B7A9A))
                     }
                     if (index < recentHistory.lastIndex) {
-                        Divider(color = Color(0xFFF0F2F8), thickness = 1.dp)
+                        HorizontalDivider(color = Color(0xFFF0F2F8), thickness = 1.dp)
                     }
                 }
             }
         }
 
         Spacer(Modifier.height(32.dp))
-    }
-}
-
-@Composable
-private fun WaveformBars(phase: Float, color: Color) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        val barCount = 28
-        repeat(barCount) { index ->
-            val heightFraction = remember(index) {
-                0.2f + Random.nextFloat() * 0.8f
-            }
-            val animHeight by rememberInfiniteTransition(label = "bar$index")
-                .animateFloat(
-                    initialValue = 0.15f,
-                    targetValue = heightFraction,
-                    animationSpec = infiniteRepeatable(
-                        tween(
-                            durationMillis = 500 + (index * 30) % 400,
-                            easing = EaseInOutSine
-                        ),
-                        RepeatMode.Reverse
-                    ),
-                    label = "bar${index}height"
-                )
-            Box(
-                modifier = Modifier
-                    .width(3.dp)
-                    .fillMaxHeight(animHeight)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(color.copy(alpha = 0.7f + animHeight * 0.3f))
-            )
-        }
     }
 }

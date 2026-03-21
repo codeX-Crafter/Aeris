@@ -28,6 +28,7 @@ fun HapticsScreen(onBack: () -> Unit) {
             .background(Color(0xFFF8F9FA))
             .verticalScroll(rememberScrollState())
     ) {
+
         // ── Header ────────────────────────────────────────────────
         Box(
             modifier = Modifier
@@ -78,7 +79,7 @@ private fun HapticCard(
     sound: SoundType,
     onTest: () -> Unit
 ) {
-    val (icon, label, patternDots, urgencyColor) = hapticMeta(sound)
+    val meta = hapticMeta(sound)
 
     Card(
         modifier = Modifier
@@ -96,13 +97,13 @@ private fun HapticCard(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(urgencyColor.copy(alpha = 0.12f)),
+                    .background(meta.color.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = icon,
+                    imageVector = meta.icon,
                     contentDescription = null,
-                    tint = urgencyColor,
+                    tint = meta.color,
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -111,20 +112,20 @@ private fun HapticCard(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = label,
+                    text = meta.label,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color(0xFF1A2340)
                 )
                 Spacer(Modifier.height(8.dp))
-                // Pattern Dots
+                // Vibration pattern dots
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    patternDots.forEach { size ->
+                    meta.patternDots.forEach { size ->
                         Box(
                             modifier = Modifier
                                 .size(width = (size * 8).dp, height = 10.dp)
                                 .clip(RoundedCornerShape(5.dp))
-                                .background(urgencyColor.copy(alpha = 0.7f))
+                                .background(meta.color.copy(alpha = 0.65f))
                         )
                     }
                 }
@@ -136,8 +137,8 @@ private fun HapticCard(
                 onClick = onTest,
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = urgencyColor.copy(alpha = 0.12f),
-                    contentColor = urgencyColor
+                    containerColor = meta.color.copy(alpha = 0.12f),
+                    contentColor = meta.color
                 ),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
@@ -157,33 +158,21 @@ private fun HapticCard(
 private data class HapticMeta(
     val icon: ImageVector,
     val label: String,
-    val patternDots: List<Int>, // relative width multipliers
+    val patternDots: List<Int>,
     val color: Color
 )
 
 private fun hapticMeta(sound: SoundType): HapticMeta = when (sound) {
-    SoundType.SIREN -> HapticMeta(
-        Icons.Default.LocalFireDepartment, "Siren",
-        listOf(3, 3, 3, 3, 3), Color(0xFFFF6B6B)
-    )
-    SoundType.HORN -> HapticMeta(
-        Icons.Default.DirectionsCar, "Car Horn",
-        listOf(2, 1, 2, 1, 2), Color(0xFFFFD166)
-    )
-    SoundType.ALARM -> HapticMeta(
-        Icons.Default.Alarm, "Alarm",
-        listOf(1, 1, 1, 1, 1, 1), Color(0xFFFF9A3C)
-    )
-    SoundType.DOORBELL -> HapticMeta(
-        Icons.Default.Doorbell, "Doorbell",
-        listOf(2, 2), Color(0xFF6FB1FC)
-    )
-    SoundType.VOICE -> HapticMeta(
-        Icons.Default.RecordVoiceOver, "Voice",
-        listOf(1, 1, 1), Color(0xFF6BCB77)
-    )
-    else -> HapticMeta(
-        Icons.Default.VolumeUp, sound.name,
-        listOf(1, 1), Color(0xFFB0B0B0)
-    )
+    SoundType.SIREN    -> HapticMeta(Icons.Default.LocalFireDepartment, "Siren",
+        listOf(3, 3, 3, 3, 3), Color(0xFFFF6B6B))
+    SoundType.HORN     -> HapticMeta(Icons.Default.DirectionsCar, "Car Horn",
+        listOf(2, 1, 2, 1, 2), Color(0xFFFFD166))
+    SoundType.ALARM    -> HapticMeta(Icons.Default.Alarm, "Alarm",
+        listOf(1, 1, 1, 1, 1, 1), Color(0xFFFF9A3C))
+    SoundType.DOORBELL -> HapticMeta(Icons.Default.Doorbell, "Doorbell",
+        listOf(2, 2), Color(0xFF6FB1FC))
+    SoundType.VOICE    -> HapticMeta(Icons.Default.RecordVoiceOver, "Voice",
+        listOf(1, 1, 1), Color(0xFF6BCB77))
+    else               -> HapticMeta(Icons.Default.VolumeUp, sound.name,
+        listOf(1, 1), Color(0xFFB0B0B0))
 }

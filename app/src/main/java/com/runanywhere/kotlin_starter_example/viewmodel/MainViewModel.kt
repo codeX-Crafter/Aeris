@@ -4,43 +4,17 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.runanywhere.kotlin_starter_example.data.SoundRepository
-import com.runanywhere.kotlin_starter_example.data.SoundType
 import com.runanywhere.kotlin_starter_example.services.HapticManager
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class MainViewModel : ViewModel() {
 
-    // 🔊 Current detected sound (from repository)
-    val currentSound: StateFlow<SoundType?> =
-        SoundRepository.currentSound
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000),
-                initialValue = null
-            )
+    val currentSound = SoundRepository.currentSound
 
-    // 🎯 Optional: UI-friendly text
-    val statusText: StateFlow<String> =
-        currentSound
-            .map { sound ->
-                sound?.name ?: "Listening..."
-            }
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000),
-                initialValue = "Listening..."
-            )
-
-    // 📳 Trigger haptics when sound detected
-    fun handleSound(context: Context, sound: SoundType) {
-        HapticManager.trigger(context, sound)
-    }
-
-    // 🔥 Auto-listen to changes (optional advanced)
-    fun startObserving(context: Context) {
+    fun observeSounds(context: Context) {
         viewModelScope.launch {
-            currentSound.collect { sound ->
+            currentSound.collectLatest { sound ->
                 sound?.let {
                     HapticManager.trigger(context, it)
                 }

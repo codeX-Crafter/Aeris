@@ -1,37 +1,57 @@
 package com.runanywhere.kotlin_starter_example.ui.components
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import kotlin.random.Random
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import kotlin.math.sin
 
 @Composable
-fun WaveformView() {
-
-    val bars = remember { List(20) { Random.nextFloat() } }
+fun WaveformView(
+    modifier: Modifier = Modifier,
+    barCount: Int = 24,
+    color: Color = Color(0xFF6FB1FC)
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "waveform")
+    val phase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2 * Math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "phase"
+    )
 
     Canvas(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .height(100.dp)
+            .height(80.dp)
     ) {
-        val barWidth = size.width / bars.size
+        val barWidth = size.width / barCount
 
-        bars.forEachIndexed { index, value ->
+        for (i in 0 until barCount) {
+            val normalized = i.toFloat() / barCount
+
+            // ✅ .toFloat() keeps math within Float range, avoids Double promotion
+            val wave = (sin((normalized * 2 * Math.PI + phase).toFloat()) + 1f) / 2f
+
+            val barHeight = size.height * (0.2f + wave * 0.8f)
+
             drawRect(
-                color = Color.Blue, // ✅ FIXED
+                color = color.copy(alpha = 0.6f + wave * 0.4f),
                 topLeft = Offset(
-                    x = index * barWidth,
-                    y = size.height * (1 - value)
+                    x = i * barWidth,   // Float * Float → Float ✅
+                    y = size.height - barHeight
                 ),
                 size = Size(
-                    barWidth * 0.8f,
-                    size.height * value
+                    width = barWidth * 0.6f,
+                    height = barHeight
                 )
             )
         }

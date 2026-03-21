@@ -10,23 +10,22 @@ import com.runanywhere.kotlin_starter_example.data.SoundType
 object HapticManager {
 
     fun trigger(context: Context, sound: SoundType) {
-        val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator ?: return
+
+        val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         val profile = SoundProfiles.map[sound] ?: return
 
-        val effect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            VibrationEffect.createWaveform(
-                profile.pattern,
-                profile.repeat
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            VibrationEffect.createWaveform(
-                profile.pattern,
-                profile.repeat
-            )
-        }
+        if (!vibrator.hasVibrator()) return
 
-        vibrator.cancel()
-        vibrator.vibrate(effect)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val effect = VibrationEffect.createWaveform(
+                profile.pattern,
+                profile.repeat
+            )
+            vibrator.cancel()
+            vibrator.vibrate(effect)
+        } else {
+            // fallback for older devices
+            vibrator.vibrate(profile.pattern, profile.repeat)
+        }
     }
 }
