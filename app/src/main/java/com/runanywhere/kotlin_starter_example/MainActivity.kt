@@ -24,19 +24,15 @@ import com.runanywhere.sdk.storage.AndroidPlatformContext
 
 class MainActivity : ComponentActivity() {
 
-    // ✅ Runtime mic permission request
     private val requestMicPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (!granted) {
-                Log.w("MainActivity", "Mic permission denied — detection will not work")
-            }
+            if (!granted) Log.w("MainActivity", "Mic permission denied")
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // ✅ Ask for mic permission before anything starts
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -52,7 +48,7 @@ class MainActivity : ComponentActivity() {
         try {
             LlamaCPP.register(priority = 100)
         } catch (e: Throwable) {
-            Log.w("MainActivity", "LlamaCPP error: ${e.message}")
+            Log.w("MainActivity", "LlamaCPP: ${e.message}")
         }
 
         ONNX.register(priority = 100)
@@ -70,15 +66,21 @@ class MainActivity : ComponentActivity() {
 fun AerisApp() {
     val navController = rememberNavController()
     val viewModel: MainViewModel = viewModel()
+    val modelService: ModelService = viewModel()
 
     NavHost(navController = navController, startDestination = "home") {
 
         composable("home") {
             HomeScreen(
                 viewModel = viewModel,
+                modelService = modelService,
                 onLive = { navController.navigate("live") },
                 onSettings = { navController.navigate("sensitivity") },
-                onHaptics = { navController.navigate("haptics") }
+                onHaptics = { navController.navigate("haptics") },
+                onCaptions = { navController.navigate("captions") },
+                onHistory = { navController.navigate("history") },
+                onVoiceProxy = { navController.navigate("voice_proxy") },
+                onConversation = { navController.navigate("conversation") }
             )
         }
 
@@ -95,6 +97,40 @@ fun AerisApp() {
 
         composable("haptics") {
             HapticsScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable("captions") {
+            LiveCaptionScreen(
+                modelService = modelService,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("history") {
+            HistoryScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("voice_proxy") {
+            VoiceProxyScreen(
+                modelService = modelService,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("conversation") {
+            ConversationScreen(
+                modelService = modelService,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("stt") {
+            SpeechToTextScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
         }
     }
 }

@@ -22,7 +22,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.runanywhere.kotlin_starter_example.data.SoundType
 import com.runanywhere.kotlin_starter_example.services.AudioForegroundService
 import com.runanywhere.kotlin_starter_example.services.ModelService
@@ -31,12 +30,17 @@ import com.runanywhere.kotlin_starter_example.viewmodel.MainViewModel
 @Composable
 fun HomeScreen(
     viewModel: MainViewModel,
+    modelService: ModelService,         // ✅ comes from NavHost — no second viewModel() call
     onLive: () -> Unit,
     onSettings: () -> Unit,
-    onHaptics: () -> Unit
+    onHaptics: () -> Unit,
+    onCaptions: () -> Unit,
+    onHistory: () -> Unit,
+    onVoiceProxy: () -> Unit,
+    onConversation: () -> Unit
 ) {
     val context = LocalContext.current
-    val modelService: ModelService = viewModel()
+    // ✅ REMOVED duplicate: val modelService: ModelService = viewModel()
 
     val sound: SoundType? by viewModel.currentSound.collectAsState(initial = null)
     var isOn by remember { mutableStateOf(false) }
@@ -209,6 +213,7 @@ fun HomeScreen(
             Spacer(Modifier.height(28.dp))
 
             // ── Quick Actions ────────────────────────────────────
+            // ── Quick Actions ────────────────────────────────────
             Text(
                 text = "Quick Actions",
                 fontSize = 13.sp,
@@ -219,186 +224,360 @@ fun HomeScreen(
                     .padding(bottom = 12.dp)
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                QuickActionCard(
-                    icon = Icons.Default.GraphicEq,
-                    label = "Live",
-                    modifier = Modifier.weight(1f),
-                    onClick = onLive
-                )
-                QuickActionCard(
-                    icon = Icons.Default.Tune,
-                    label = "Sensitivity",
-                    modifier = Modifier.weight(1f),
-                    onClick = onSettings
-                )
-                QuickActionCard(
-                    icon = Icons.Default.Vibration,
-                    label = "Haptics",
-                    modifier = Modifier.weight(1f),
-                    onClick = onHaptics
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    QuickActionCard(
+                        icon = Icons.Default.GraphicEq,
+                        label = "Live",
+                        modifier = Modifier.weight(1f),
+                        onClick = onLive
+                    )
+                    QuickActionCard(
+                        icon = Icons.Default.ClosedCaption,
+                        label = "Captions",
+                        modifier = Modifier.weight(1f),
+                        onClick = onCaptions
+                    )
+                    QuickActionCard(
+                        icon = Icons.Default.History,
+                        label = "History",
+                        modifier = Modifier.weight(1f),
+                        onClick = onHistory
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    QuickActionCard(
+                        icon = Icons.Default.Tune,
+                        label = "Sensitivity",
+                        modifier = Modifier.weight(1f),
+                        onClick = onSettings
+                    )
+                    QuickActionCard(
+                        icon = Icons.Default.Vibration,
+                        label = "Haptics",
+                        modifier = Modifier.weight(1f),
+                        onClick = onHaptics
+                    )
+                    QuickActionCard(
+                        icon = Icons.Default.VolumeUp,
+                        label = "Voice Proxy",
+                        modifier = Modifier.weight(1f),
+                        onClick = onVoiceProxy
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    QuickActionCard(
+                        icon = Icons.Default.Forum,
+                        label = "Converse",
+                        modifier = Modifier.weight(1f),
+                        onClick = onConversation
+                    )
+                    // ✅ Ghost cards — same size as real cards, fully transparent, not clickable
+                    Box(modifier = Modifier.weight(1f))
+                    Box(modifier = Modifier.weight(1f))
+                }
             }
-
             Spacer(Modifier.height(28.dp))
 
-            // ── STT Model Card ───────────────────────────────────
-            STTModelCard(modelService = modelService)
+            // ── AI Models Section ────────────────────────────────
+            ModelDownloadSection(modelService = modelService)
+
+            Spacer(Modifier.height(32.dp))
         }
     }
 }
 
+// ── Model Download Section ───────────────────────────────────────────────────
+
 @Composable
-private fun STTModelCard(modelService: ModelService) {
-    val softBlueStart = Color(0xFF6FB1FC)
-    val softBlueEnd   = Color(0xFFA7C6FF)
-    val green         = Color(0xFF6BCB77)
+private fun ModelDownloadSection(modelService: ModelService) {
+
+    Text(
+        text = "AI Models",
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Medium,
+        color = Color(0xFF6B7A9A),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp)
+    )
+
+    // STT — required for sound detection + live captions + conversation listening
+    ModelCard(
+        title = "Sound Detection",
+        subtitle = "Whisper Tiny — speech recognition",
+        fileSize = "~40MB",
+        accentColor = Color(0xFF6FB1FC),
+        isLoaded = modelService.isSTTLoaded,
+        isLoading = modelService.isSTTLoading,
+        isDownloading = modelService.isSTTDownloading,
+        progress = modelService.sttDownloadProgress,
+        readyHint = "Say 'siren', 'alarm', 'hello' to detect sounds",
+        onDownload = { modelService.downloadAndLoadSTT() }
+    )
+
+    Spacer(Modifier.height(12.dp))
+
+    // TTS — required for Voice Proxy + Conversation speaking
+    ModelCard(
+        title = "Voice Proxy & Conversation",
+        subtitle = "Piper TTS — text to speech",
+        fileSize = "~60MB",
+        accentColor = Color(0xFF9C6FFC),
+        isLoaded = modelService.isTTSLoaded,
+        isLoading = modelService.isTTSLoading,
+        isDownloading = modelService.isTTSDownloading,
+        progress = modelService.ttsDownloadProgress,
+        readyHint = "Voice Proxy and Conversation speaking ready",
+        onDownload = { modelService.downloadAndLoadTTS() }
+    )
+
+    Spacer(Modifier.height(12.dp))
+
+    // LLM — required for smart replies + summarization
+    ModelCard(
+        title = "AI Smart Replies",
+        subtitle = "SmolLM2 360M — on-device AI",
+        fileSize = "~400MB",
+        accentColor = Color(0xFFFF9A3C),
+        isLoaded = modelService.isLLMLoaded,
+        isLoading = modelService.isLLMLoading,
+        isDownloading = modelService.isLLMDownloading,
+        progress = modelService.llmDownloadProgress,
+        readyHint = "Smart replies and summarization active",
+        onDownload = { modelService.downloadAndLoadLLM() }
+    )
+
+    Spacer(Modifier.height(16.dp))
+
+    // Download All — only when something is missing and nothing is downloading
+    val allLoaded = modelService.isSTTLoaded &&
+            modelService.isTTSLoaded &&
+            modelService.isLLMLoaded
+    val anyDownloading = modelService.isSTTDownloading ||
+            modelService.isTTSDownloading ||
+            modelService.isLLMDownloading
+
+    if (!allLoaded && !anyDownloading) {
+        Button(
+            onClick = { modelService.downloadAndLoadAllModels() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF6FB1FC)
+            )
+        ) {
+            Icon(
+                Icons.Default.CloudDownload,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Download All Models",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = "~500MB total • Required for all features",
+            fontSize = 11.sp,
+            color = Color(0xFFB0B0B0),
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+// ── Reusable Model Card ──────────────────────────────────────────────────────
+
+@Composable
+private fun ModelCard(
+    title: String,
+    subtitle: String,
+    fileSize: String,
+    accentColor: Color,
+    isLoaded: Boolean,
+    isLoading: Boolean,
+    isDownloading: Boolean,
+    progress: Float,
+    readyHint: String,
+    onDownload: () -> Unit
+) {
+    val green = Color(0xFF6BCB77)
 
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
 
-            // Title row
+            // ── Title row ────────────────────────────────────────
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
                         .background(
-                            if (modelService.isSTTLoaded)
-                                green.copy(alpha = 0.12f)
-                            else
-                                softBlueStart.copy(alpha = 0.12f)
+                            if (isLoaded) green.copy(alpha = 0.12f)
+                            else accentColor.copy(alpha = 0.12f)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = if (modelService.isSTTLoaded)
-                            Icons.Default.CheckCircle else Icons.Default.CloudDownload,
+                        imageVector = if (isLoaded) Icons.Default.CheckCircle
+                        else Icons.Default.CloudDownload,
                         contentDescription = null,
-                        tint = if (modelService.isSTTLoaded) green else softBlueStart,
+                        tint = if (isLoaded) green else accentColor,
                         modifier = Modifier.size(22.dp)
                     )
                 }
+
                 Spacer(Modifier.width(12.dp))
+
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Sound Detection Model",
-                        fontSize = 15.sp,
+                        text = title,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = Color(0xFF1A2340)
                     )
                     Text(
-                        text = when {
-                            modelService.isSTTLoaded     -> "Ready — detection active"
-                            modelService.isSTTLoading    -> "Loading model…"
-                            modelService.isSTTDownloading -> "Downloading…"
-                            else                         -> "Required for sound detection"
-                        },
+                        text = subtitle,
                         fontSize = 12.sp,
                         color = Color(0xFF6B7A9A)
                     )
                 }
-            }
 
-            // Progress bar while downloading
-            if (modelService.isSTTDownloading) {
-                Spacer(Modifier.height(14.dp))
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Downloading Whisper Tiny",
-                            fontSize = 12.sp,
-                            color = Color(0xFF6B7A9A)
+                // Status badge
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50.dp))
+                        .background(
+                            when {
+                                isLoaded      -> green.copy(alpha = 0.12f)
+                                isDownloading -> accentColor.copy(alpha = 0.12f)
+                                isLoading     -> accentColor.copy(alpha = 0.12f)
+                                else          -> Color(0xFFEEF0F5)
+                            }
                         )
-                        Text(
-                            text = "${(modelService.sttDownloadProgress * 100).toInt()}%",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = softBlueStart
-                        )
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    LinearProgressIndicator(
-                        progress = { modelService.sttDownloadProgress },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp)),
-                        color = softBlueStart,
-                        trackColor = Color(0xFFEEF0F5)
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = when {
+                            isLoaded      -> "Ready"
+                            isDownloading -> "Downloading"
+                            isLoading     -> "Loading"
+                            else          -> "Not loaded"
+                        },
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = when {
+                            isLoaded      -> green
+                            isDownloading -> accentColor
+                            isLoading     -> accentColor
+                            else          -> Color(0xFF6B7A9A)
+                        }
                     )
                 }
             }
 
-            // Loading spinner
-            if (modelService.isSTTLoading) {
-                Spacer(Modifier.height(14.dp))
+            // ── Download progress ─────────────────────────────────
+            if (isDownloading) {
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Downloading…", fontSize = 12.sp, color = Color(0xFF6B7A9A))
+                    Text(
+                        "${(progress * 100).toInt()}%",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = accentColor
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp)),
+                    color = accentColor,
+                    trackColor = Color(0xFFEEF0F5)
+                )
+            }
+
+            // ── Loading spinner ───────────────────────────────────
+            if (isLoading) {
+                Spacer(Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        color = softBlueStart,
+                        modifier = Modifier.size(16.dp),
+                        color = accentColor,
                         strokeWidth = 2.dp
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = "Loading into memory…",
+                        "Loading into memory…",
                         fontSize = 12.sp,
                         color = Color(0xFF6B7A9A)
                     )
                 }
             }
 
-            // Download button — only show if not loaded/downloading/loading
-            if (!modelService.isSTTLoaded &&
-                !modelService.isSTTDownloading &&
-                !modelService.isSTTLoading
-            ) {
-                Spacer(Modifier.height(14.dp))
-                Button(
-                    onClick = { modelService.downloadAndLoadSTT() },
+            // ── Download button ───────────────────────────────────
+            if (!isLoaded && !isDownloading && !isLoading) {
+                Spacer(Modifier.height(12.dp))
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = softBlueStart
-                    )
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        Icons.Default.CloudDownload,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "Download Detection Model",
-                        fontWeight = FontWeight.Medium
-                    )
+                    Text(fileSize, fontSize = 12.sp, color = Color(0xFFB0B0B0))
+                    Button(
+                        onClick = onDownload,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = accentColor
+                        ),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Download,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "Download",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "~40MB • Required for keyword detection",
-                    fontSize = 11.sp,
-                    color = Color(0xFFB0B0B0),
-                    modifier = Modifier.fillMaxWidth()
-                )
             }
 
-            // Ready state with gradient indicator
-            if (modelService.isSTTLoaded) {
+            // ── Ready hint ────────────────────────────────────────
+            if (isLoaded) {
                 Spacer(Modifier.height(10.dp))
                 Box(
                     modifier = Modifier
@@ -410,22 +589,20 @@ private fun STTModelCard(modelService: ModelService) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .size(8.dp)
+                                .size(6.dp)
                                 .clip(CircleShape)
                                 .background(green)
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "Say 'siren', 'alarm', 'hello' to test",
-                            fontSize = 12.sp,
-                            color = green
-                        )
+                        Text(readyHint, fontSize = 11.sp, color = green)
                     }
                 }
             }
         }
     }
 }
+
+// ── Quick Action Card ────────────────────────────────────────────────────────
 
 @Composable
 private fun QuickActionCard(
@@ -438,24 +615,31 @@ private fun QuickActionCard(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-        modifier = modifier.clickable(onClick = onClick)
+        modifier = modifier
+            .heightIn(min = 76.dp)
+            .clickable(onClick = onClick)
     ) {
         Column(
-            modifier = Modifier.padding(vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(vertical = 14.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = Color(0xFF6FB1FC),
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(26.dp)
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 text = label,
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
-                color = Color(0xFF1A2340)
+                color = Color(0xFF1A2340),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                maxLines = 1
             )
         }
     }

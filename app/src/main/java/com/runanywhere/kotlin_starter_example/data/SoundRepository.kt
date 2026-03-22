@@ -11,7 +11,9 @@ object SoundRepository {
     private val _confidence = MutableStateFlow(0)
     val confidence: StateFlow<Int> = _confidence
 
-    // ✅ Called by AudioForegroundService with full predictions map
+    private val _history = MutableStateFlow<List<SoundEvent>>(emptyList())
+    val history: StateFlow<List<SoundEvent>> = _history
+
     fun updateDetection(predictions: Map<SoundType, Float>) {
         if (predictions.isEmpty()) {
             _currentSound.value = null
@@ -21,9 +23,34 @@ object SoundRepository {
         val top = predictions.maxByOrNull { it.value }!!
         _currentSound.value = top.key
         _confidence.value = (top.value * 100).toInt()
+
+        // Add to history
+        val event = SoundEvent(
+            type = top.key,
+            confidence = top.value,
+            timestamp = System.currentTimeMillis()
+        )
+        _history.value = listOf(event) + _history.value.take(49)
     }
 
-    // ✅ Also keep update() so old SoundClassifier code doesn't break
+    fun updateDetectionWithTranscript(
+        predictions: Map<SoundType, Float>,
+        transcript: String
+    ) {
+        if (predictions.isEmpty()) return
+        val top = predictions.maxByOrNull { it.value }!!
+        _currentSound.value = top.key
+        _confidence.value = (top.value * 100).toInt()
+
+        val event = SoundEvent(
+            type = top.key,
+            confidence = top.value,
+            timestamp = System.currentTimeMillis(),
+            transcript = transcript.ifBlank { null }
+        )
+        _history.value = listOf(event) + _history.value.take(49)
+    }
+
     fun update(sound: SoundType?, confidenceScore: Float) {
         _currentSound.value = sound
         _confidence.value = (confidenceScore * 100).toInt()
