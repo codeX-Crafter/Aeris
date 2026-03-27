@@ -292,6 +292,9 @@ fun ConversationScreen(
                         placeholder = { Text("Type your reply…") },
                         shape = RoundedCornerShape(12.dp),
                         colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.Black,
+                            unfocusedTextColor = Color.Black,
+
                             focusedBorderColor = purple,
                             unfocusedBorderColor = Color(0xFFEEF0F5)
                         ),

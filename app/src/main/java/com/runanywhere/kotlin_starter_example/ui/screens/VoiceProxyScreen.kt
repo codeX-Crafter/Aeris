@@ -170,6 +170,9 @@ fun VoiceProxyScreen(
                     maxLines = 6,
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.Black,     // 🔥 FIX
+                        unfocusedTextColor = Color.Black,   // 🔥 FIX
+
                         focusedBorderColor = softBlue,
                         unfocusedBorderColor = Color(0xFFEEF0F5)
                     )
