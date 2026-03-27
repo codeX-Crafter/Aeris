@@ -9,50 +9,48 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import kotlin.math.sin
+import com.runanywhere.kotlin_starter_example.data.SoundRepository
+import kotlin.math.max
 
 @Composable
 fun WaveformView(
     modifier: Modifier = Modifier,
-    barCount: Int = 24,
+    barCount: Int = 32,
     color: Color = Color(0xFF6FB1FC)
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "waveform")
-    val phase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * Math.PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "phase"
-    )
+    val rms by SoundRepository.audioRMS.collectAsState()
+    
+    // Create a list of heights that we'll animate/shift
+    val barHeights = remember { mutableStateListOf<Float>().apply { 
+        repeat(barCount) { add(0.1f) } 
+    } }
+
+    // Update heights based on real-time RMS
+    LaunchedEffect(rms) {
+        barHeights.removeAt(0)
+        // Scale RMS (usually 0.0 to 0.1) to a visible bar height (0.1 to 1.0)
+        val newHeight = (rms * 10f).coerceIn(0.05f, 1f)
+        barHeights.add(newHeight)
+    }
 
     Canvas(
         modifier = modifier
             .fillMaxWidth()
             .height(80.dp)
     ) {
-        val barWidth = size.width / barCount
+        val canvasWidth = size.width
+        val canvasHeight = size.height
+        val barWidth = canvasWidth / barCount
+        val gap = barWidth * 0.2f
 
-        for (i in 0 until barCount) {
-            val normalized = i.toFloat() / barCount
-
-            // ✅ .toFloat() keeps math within Float range, avoids Double promotion
-            val wave = (sin((normalized * 2 * Math.PI + phase).toFloat()) + 1f) / 2f
-
-            val barHeight = size.height * (0.2f + wave * 0.8f)
-
+        barHeights.forEachIndexed { index, heightMultiplier ->
+            val x = index * barWidth
+            val h = canvasHeight * heightMultiplier
+            
             drawRect(
-                color = color.copy(alpha = 0.6f + wave * 0.4f),
-                topLeft = Offset(
-                    x = i * barWidth,   // Float * Float → Float ✅
-                    y = size.height - barHeight
-                ),
-                size = Size(
-                    width = barWidth * 0.6f,
-                    height = barHeight
-                )
+                color = color.copy(alpha = 0.4f + (heightMultiplier * 0.6f)),
+                topLeft = Offset(x + gap, (canvasHeight - h) / 2),
+                size = Size(barWidth - (gap * 2), h)
             )
         }
     }

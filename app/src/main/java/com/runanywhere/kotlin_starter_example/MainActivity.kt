@@ -1,17 +1,26 @@
 package com.runanywhere.kotlin_starter_example
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.Composable
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.*
+import com.runanywhere.kotlin_starter_example.data.SettingsRepository
 import com.runanywhere.kotlin_starter_example.services.ModelService
 import com.runanywhere.kotlin_starter_example.ui.screens.*
 import com.runanywhere.kotlin_starter_example.ui.theme.KotlinStarterTheme
@@ -24,22 +33,28 @@ import com.runanywhere.sdk.storage.AndroidPlatformContext
 
 class MainActivity : ComponentActivity() {
 
-    private val requestMicPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (!granted) Log.w("MainActivity", "Mic permission denied")
+    private val requiredPermissions = mutableListOf(Manifest.permission.RECORD_AUDIO).apply {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    private val requestPermissionsLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+            val allGranted = results.values.all { it }
+            if (allGranted) {
+                Log.d("MainActivity", "All permissions granted")
+            } else {
+                Log.w("MainActivity", "Some permissions denied")
+            }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            requestMicPermission.launch(Manifest.permission.RECORD_AUDIO)
-        }
-
         AndroidPlatformContext.initialize(this)
+        SettingsRepository.init(this)
         RunAnywhere.initialize("development")
 
         val basePath = java.io.File(filesDir, "runanywhere").absolutePath
@@ -56,10 +71,67 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             KotlinStarterTheme {
+                var showPermissionDialog by remember { 
+                    mutableStateOf(!hasAllPermissions()) 
+                }
+
+                if (showPermissionDialog) {
+                    PermissionRequirementDialog(
+                        onConfirm = {
+                            showPermissionDialog = false
+                            requestPermissionsLauncher.launch(requiredPermissions.toTypedArray())
+                        },
+                        onDismiss = {
+                            showPermissionDialog = false
+                        },
+                        onOpenSettings = {
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.fromParts("package", packageName, null)
+                            }
+                            startActivity(intent)
+                            showPermissionDialog = false
+                        }
+                    )
+                }
+
                 AerisApp()
             }
         }
     }
+
+    private fun hasAllPermissions(): Boolean {
+        return requiredPermissions.all {
+            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+}
+
+@Composable
+fun PermissionRequirementDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Permissions Required") },
+        text = {
+            Text(
+                "Aeris needs Microphone and Notification permissions to detect sounds and alert you in real-time. " +
+                "Please grant these permissions to continue."
+            )
+        },
+        confirmButton = {
+            Button(onClick = onConfirm) {
+                Text("Grant Permissions")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onOpenSettings) {
+                Text("Open Settings")
+            }
+        }
+    )
 }
 
 @Composable
@@ -74,20 +146,13 @@ fun AerisApp() {
             HomeScreen(
                 viewModel = viewModel,
                 modelService = modelService,
-                onLive = { navController.navigate("live") },
+                onLive = { /* Removed */ },
                 onSettings = { navController.navigate("sensitivity") },
                 onHaptics = { navController.navigate("haptics") },
                 onCaptions = { navController.navigate("captions") },
                 onHistory = { navController.navigate("history") },
                 onVoiceProxy = { navController.navigate("voice_proxy") },
                 onConversation = { navController.navigate("conversation") }
-            )
-        }
-
-        composable("live") {
-            LiveDetectionScreen(
-                viewModel = viewModel,
-                onBack = { navController.popBackStack() }
             )
         }
 
