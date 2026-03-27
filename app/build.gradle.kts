@@ -50,8 +50,14 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // Exclude desktop-specific libraries that fail 16KB alignment checks
+            excludes += "debian-amd64/**"
+            excludes += "**/libwhisper.so*"
         }
         jniLibs {
+            // Forces compression/extraction which avoids alignment issues with pre-built libs
+            useLegacyPackaging = true
+
             pickFirsts += listOf(
                 "lib/arm64-v8a/libonnxruntime.so",
                 "lib/armeabi-v7a/libonnxruntime.so",
@@ -59,6 +65,10 @@ android {
                 "lib/x86_64/libonnxruntime.so"
             )
         }
+    }
+
+    androidResources {
+        noCompress += "tflite"
     }
 }
 
@@ -88,13 +98,14 @@ dependencies {
     implementation(libs.runanywhere.sdk)
     implementation(libs.runanywhere.llamacpp)
     implementation(libs.runanywhere.onnx)
+
+    // TensorFlow Lite
+    implementation(libs.tensorflow.lite)
+    implementation(libs.tensorflow.lite.support)
+    implementation(libs.tensorflow.lite.gpu)
     
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-//    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.3")
-//
 }

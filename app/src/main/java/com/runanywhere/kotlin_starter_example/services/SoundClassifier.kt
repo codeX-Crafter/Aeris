@@ -1,175 +1,152 @@
 package com.runanywhere.kotlin_starter_example.services
 
 import android.content.Context
+import android.content.res.AssetManager
 import android.util.Log
 import com.runanywhere.kotlin_starter_example.data.SoundType
-import com.runanywhere.sdk.public.RunAnywhere
-import com.runanywhere.sdk.public.extensions.transcribe
-import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.tensorflow.lite.Interpreter
+import java.io.BufferedReader
+import java.io.FileInputStream
+import java.io.InputStreamReader
 import java.nio.ByteBuffer
-import java.nio.ByteOrder
+import java.nio.channels.FileChannel
 
+/**
+ * SoundClassifier uses the YAMNet TFLite model to classify audio chunks into sound categories.
+ * It replaces the previous keyword-matching transcription approach.
+ */
 class SoundClassifier(private val context: Context) {
 
     companion object {
         const val TAG = "SoundClassifier"
+        const val MODEL_PATH = "yamnet.tflite"
+        const val LABEL_PATH = "yamnet_class_map.csv"
         const val SAMPLE_RATE = 16000
-        const val REQUIRED_SAMPLES = 48000
-        const val COOLDOWN_MS = 3000L
+        const val REQUIRED_SAMPLES = 15600 // YAMNet expects 0.975s of audio (15600 samples @ 16kHz)
+        const val CLASSIFICATION_THRESHOLD = 0.3f
     }
 
+    private var interpreter: Interpreter? = null
+    private val labels = mutableListOf<String>()
     private val audioBuffer = mutableListOf<Float>()
-    private var lastDetectionTime = 0L
 
-    private val keywordMap = mapOf(
-        "siren"      to SoundType.SIREN,
-        "ambulance"  to SoundType.SIREN,
-        "fire truck" to SoundType.SIREN,
-        "police"     to SoundType.SIREN,
-        "wee woo"    to SoundType.SIREN,
-        "emergency"  to SoundType.SIREN,
-        "horn"       to SoundType.HORN,
-        "honk"       to SoundType.HORN,
-        "beep"       to SoundType.HORN,
-        "toot"       to SoundType.HORN,
-        "alarm"      to SoundType.ALARM,
-        "alert"      to SoundType.ALARM,
-        "beeping"    to SoundType.ALARM,
-        "ringing"    to SoundType.ALARM,
-        "fire alarm" to SoundType.ALARM,
-        "doorbell"   to SoundType.DOORBELL,
-        "door bell"  to SoundType.DOORBELL,
-        "ding dong"  to SoundType.DOORBELL,
-        "ding"       to SoundType.DOORBELL,
-        "dong"       to SoundType.DOORBELL,
-        "hello"      to SoundType.VOICE,
-        "hey"        to SoundType.VOICE,
-        "help"       to SoundType.VOICE,
-        "excuse me"  to SoundType.VOICE,
-        "hi"         to SoundType.VOICE,
-        "stop"       to SoundType.VOICE,
-        "wait"       to SoundType.VOICE
-    )
+    init {
+        try {
+            val model = loadModelFile(context.assets, MODEL_PATH)
+            val options = Interpreter.Options().apply {
+                setNumThreads(2)
+            }
+            interpreter = Interpreter(model, options)
+            loadLabels()
+            Log.d(TAG, "YAMNet initialized with ${labels.size} labels")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize YAMNet: ${e.message}")
+        }
+    }
 
-    suspend fun classify(audio: FloatArray): Map<SoundType, Float> {
+    private fun loadModelFile(assetManager: AssetManager, modelPath: String): ByteBuffer {
+        val fileDescriptor = assetManager.openFd(modelPath)
+        val inputStream = FileInputStream(fileDescriptor.fileDescriptor)
+        val fileChannel = inputStream.channel
+        val startOffset = fileDescriptor.startOffset
+        val declaredLength = fileDescriptor.declaredLength
+        return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
+    }
+
+    private fun loadLabels() {
+        try {
+            val reader = BufferedReader(InputStreamReader(context.assets.open(LABEL_PATH)))
+            reader.readLine() // Skip CSV header
+            reader.forEachLine { line ->
+                val parts = line.split(",")
+                if (parts.size >= 3) {
+                    // Extract display_name, which might be quoted and contain commas
+                    val displayName = parts.drop(2).joinToString(",").replace("\"", "").trim()
+                    labels.add(displayName)
+                }
+            }
+            reader.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading labels: ${e.message}")
+        }
+    }
+
+    suspend fun classify(audio: FloatArray): Map<SoundType, Float> = withContext(Dispatchers.Default) {
         audioBuffer.addAll(audio.toList())
 
-        if (audioBuffer.size < REQUIRED_SAMPLES) return emptyMap()
-
-        val now = System.currentTimeMillis()
-        if (now - lastDetectionTime < COOLDOWN_MS) {
-            repeat(REQUIRED_SAMPLES / 2) {
-                if (audioBuffer.isNotEmpty()) audioBuffer.removeAt(0)
-            }
-            return emptyMap()
-        }
+        // Ensure we have enough samples for one YAMNet window
+        if (audioBuffer.size < REQUIRED_SAMPLES) return@withContext emptyMap<SoundType, Float>()
 
         val input = audioBuffer.take(REQUIRED_SAMPLES).toFloatArray()
+        
+        // Remove processed chunk with 50% overlap for better detection continuity
         repeat(REQUIRED_SAMPLES / 2) {
             if (audioBuffer.isNotEmpty()) audioBuffer.removeAt(0)
         }
 
-        // Skip silent chunks
-        val rms = Math.sqrt(
-            input.fold(0.0) { acc, s -> acc + s * s } / input.size
-        ).toFloat()
+        // Quick RMS check to skip silence and save computation
+        val rms = Math.sqrt(input.map { it * it }.average()).toFloat()
+        if (rms < 0.001f) return@withContext emptyMap<SoundType, Float>()
 
-        if (rms < 0.005f) {
-            Log.d(TAG, "Silent chunk — skipping")
-            return emptyMap()
-        }
+        return@withContext try {
+            val output = Array(1) { FloatArray(labels.size) }
+            interpreter?.run(input, output)
 
-        return try {
-            val wavBytes = floatArrayToWav(input, SAMPLE_RATE)
+            val probabilities = output[0]
+            val results = mutableMapOf<SoundType, Float>()
 
-            // Attempt transcription — if model not loaded, exception is caught below
-            val transcript = RunAnywhere.transcribe(wavBytes)
-                .trim()
-                .lowercase()
-
-            Log.d(TAG, "Transcript: '$transcript'")
-
-            if (transcript.isBlank()) return emptyMap()
-
-            val detected = matchKeywords(transcript)
-
-            if (detected != null) {
-                lastDetectionTime = now
-                Log.d(TAG, "Detected: ${detected.first} @ ${detected.second}")
-                mapOf(detected.first to detected.second)
-            } else if (transcript.length > 3) {
-                lastDetectionTime = now
-                Log.d(TAG, "Speech → VOICE fallback")
-                mapOf(SoundType.VOICE to 0.6f)
-            } else {
-                emptyMap()
-            }
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Transcription failed: ${e.message}")
-            emptyMap()
-        }
-    }
-
-    private fun matchKeywords(transcript: String): Pair<SoundType, Float>? {
-        // Sort by length descending — match "fire alarm" before "alarm"
-        val sorted = keywordMap.entries.sortedByDescending { it.key.length }
-        for ((keyword, soundType) in sorted) {
-            if (transcript.contains(keyword)) {
-                val confidence = when {
-                    transcript == keyword          -> 1.0f
-                    transcript.startsWith(keyword) -> 0.9f
-                    else                           -> 0.8f
+            // Find all labels above threshold and map them to our internal SoundType
+            probabilities.indices.forEach { i ->
+                if (probabilities[i] > CLASSIFICATION_THRESHOLD) {
+                    val label = labels[i].lowercase()
+                    val type = mapLabelToSoundType(label)
+                    if (type != null) {
+                        // Keep the highest confidence for each SoundType
+                        results[type] = maxOf(results[type] ?: 0f, probabilities[i])
+                    }
                 }
-                return Pair(soundType, confidence)
             }
+            
+            if (results.isNotEmpty()) {
+                Log.d(TAG, "Detections: ${results.map { "${it.key}: ${it.value}" }}")
+            }
+            results
+        } catch (e: Exception) {
+            Log.e(TAG, "Classification failed: ${e.message}")
+            emptyMap<SoundType, Float>()
         }
-        return null
     }
 
-    private fun floatArrayToWav(samples: FloatArray, sampleRate: Int): ByteArray {
-        val pcmBytes = ByteArray(samples.size * 2)
-        val buffer = ByteBuffer.wrap(pcmBytes).order(ByteOrder.LITTLE_ENDIAN)
-        samples.forEach { sample ->
-            val clamped = sample.coerceIn(-1f, 1f)
-            buffer.putShort((clamped * 32767).toInt().toShort())
+    private fun mapLabelToSoundType(label: String): SoundType? {
+        return when {
+            label.contains("siren") || label.contains("emergency vehicle") || 
+            label.contains("ambulance") || label.contains("police car") || 
+            label.contains("fire engine") -> SoundType.SIREN
+            
+            label.contains("horn") || label.contains("honk") || 
+            label.contains("vehicle horn") || label.contains("car horn") -> SoundType.HORN
+            
+            label.contains("alarm") || label.contains("smoke detector") || 
+            label.contains("fire alarm") || label.contains("buzzer") || 
+            label.contains("beeper") -> SoundType.ALARM
+            
+            label.contains("doorbell") || label.contains("ding-dong") || 
+            label.contains("chime") -> SoundType.DOORBELL
+            
+            label.contains("speech") || label.contains("shout") || 
+            label.contains("yell") || label.contains("conversation") || 
+            label.contains("laughter") || label.contains("crying") || 
+            label.contains("baby cry") -> SoundType.VOICE
+
+            else -> null
         }
-
-        val out = ByteArrayOutputStream()
-        val totalDataLen = pcmBytes.size + 36
-        val byteRate = sampleRate * 2
-
-        out.write("RIFF".toByteArray())
-        out.write(intToBytes(totalDataLen))
-        out.write("WAVE".toByteArray())
-        out.write("fmt ".toByteArray())
-        out.write(intToBytes(16))
-        out.write(shortToBytes(1))
-        out.write(shortToBytes(1))
-        out.write(intToBytes(sampleRate))
-        out.write(intToBytes(byteRate))
-        out.write(shortToBytes(2))
-        out.write(shortToBytes(16))
-        out.write("data".toByteArray())
-        out.write(intToBytes(pcmBytes.size))
-        out.write(pcmBytes)
-
-        return out.toByteArray()
     }
-
-    private fun intToBytes(value: Int): ByteArray =
-        ByteBuffer.allocate(4)
-            .order(ByteOrder.LITTLE_ENDIAN)
-            .putInt(value)
-            .array()
-
-    private fun shortToBytes(value: Int): ByteArray =
-        ByteBuffer.allocate(2)
-            .order(ByteOrder.LITTLE_ENDIAN)
-            .putShort(value.toShort())
-            .array()
 
     fun close() {
+        interpreter?.close()
+        interpreter = null
         audioBuffer.clear()
     }
 }
