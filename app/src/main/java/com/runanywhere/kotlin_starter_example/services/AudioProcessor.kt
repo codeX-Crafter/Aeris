@@ -20,7 +20,6 @@ class AudioProcessor(private val context: Context) {
 
     suspend fun start(onAudio: (FloatArray) -> Unit) = withContext(Dispatchers.IO) {
 
-        // ✅ Explicit permission check before touching AudioRecord
         if (ContextCompat.checkSelfPermission(
                 context,
                 android.Manifest.permission.RECORD_AUDIO
@@ -73,7 +72,6 @@ class AudioProcessor(private val context: Context) {
             }
 
         } catch (e: SecurityException) {
-            // ✅ Explicit SecurityException handler as required
             Log.e(TAG, "SecurityException — mic permission denied at OS level: ${e.message}")
         } catch (e: Exception) {
             Log.e(TAG, "AudioRecord error: ${e.message}")

@@ -3,6 +3,7 @@ package com.runanywhere.kotlin_starter_example.services
 import android.content.Context
 import android.content.res.AssetManager
 import android.util.Log
+import com.runanywhere.kotlin_starter_example.data.SoundRepository
 import com.runanywhere.kotlin_starter_example.data.SoundType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -14,8 +15,8 @@ import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 
 /**
- * SoundClassifier uses the YAMNet TFLite model to classify audio chunks into sound categories.
- * It replaces the previous keyword-matching transcription approach.
+ * SoundClassifier using YAMNet TFLite.
+ * Optimized for robustness and verbose logging to diagnose detection issues.
  */
 class SoundClassifier(private val context: Context) {
 
@@ -24,8 +25,8 @@ class SoundClassifier(private val context: Context) {
         const val MODEL_PATH = "yamnet.tflite"
         const val LABEL_PATH = "yamnet_class_map.csv"
         const val SAMPLE_RATE = 16000
-        const val REQUIRED_SAMPLES = 15600 // YAMNet expects 0.975s of audio (15600 samples @ 16kHz)
-        const val CLASSIFICATION_THRESHOLD = 0.3f
+        const val REQUIRED_SAMPLES = 15600 
+        const val INTERNAL_THRESHOLD = 0.1f // Lowered to capture more candidates
     }
 
     private var interpreter: Interpreter? = null
@@ -40,9 +41,16 @@ class SoundClassifier(private val context: Context) {
             }
             interpreter = Interpreter(model, options)
             loadLabels()
-            Log.d(TAG, "YAMNet initialized with ${labels.size} labels")
+            
+            val outputCount = interpreter?.outputTensorCount ?: 0
+            Log.d(TAG, "YAMNet initialized. Labels: ${labels.size}, Outputs: $outputCount")
+            
+            for (i in 0 until outputCount) {
+                val tensor = interpreter?.getOutputTensor(i)
+                Log.d(TAG, "Output $i: Name=${tensor?.name()}, Shape=${tensor?.shape()?.contentToString()}")
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize YAMNet: ${e.message}")
+            Log.e(TAG, "Initialization Error: ${e.message}", e)
         }
     }
 
@@ -58,87 +66,114 @@ class SoundClassifier(private val context: Context) {
     private fun loadLabels() {
         try {
             val reader = BufferedReader(InputStreamReader(context.assets.open(LABEL_PATH)))
-            reader.readLine() // Skip CSV header
+            reader.readLine() 
             reader.forEachLine { line ->
                 val parts = line.split(",")
                 if (parts.size >= 3) {
-                    // Extract display_name, which might be quoted and contain commas
                     val displayName = parts.drop(2).joinToString(",").replace("\"", "").trim()
                     labels.add(displayName)
                 }
             }
             reader.close()
+            Log.d(TAG, "Loaded ${labels.size} labels")
         } catch (e: Exception) {
-            Log.e(TAG, "Error loading labels: ${e.message}")
+            Log.e(TAG, "Label Loading Error: ${e.message}")
         }
     }
 
     suspend fun classify(audio: FloatArray): Map<SoundType, Float> = withContext(Dispatchers.Default) {
         audioBuffer.addAll(audio.toList())
 
-        // Ensure we have enough samples for one YAMNet window
+        // Trim buffer if it gets too large to avoid memory issues
+        if (audioBuffer.size > REQUIRED_SAMPLES * 4) {
+            repeat(audioBuffer.size - REQUIRED_SAMPLES * 2) { audioBuffer.removeAt(0) }
+        }
+
         if (audioBuffer.size < REQUIRED_SAMPLES) return@withContext emptyMap<SoundType, Float>()
 
         val input = audioBuffer.take(REQUIRED_SAMPLES).toFloatArray()
         
-        // Remove processed chunk with 50% overlap for better detection continuity
+        // 50% overlap
         repeat(REQUIRED_SAMPLES / 2) {
             if (audioBuffer.isNotEmpty()) audioBuffer.removeAt(0)
         }
 
-        // Quick RMS check to skip silence and save computation
-        val rms = Math.sqrt(input.map { it * it }.average()).toFloat()
-        if (rms < 0.001f) return@withContext emptyMap<SoundType, Float>()
-
+        // Removed RMS check to ensure we process even quiet sounds for debugging
+        
         return@withContext try {
-            val output = Array(1) { FloatArray(labels.size) }
-            interpreter?.run(input, output)
+            val outputCount = interpreter?.outputTensorCount ?: 0
+            val outputScores = Array(1) { FloatArray(labels.size) }
+            
+            if (outputCount >= 3) {
+                // Multi-output model (likely the official YAMNet TFLite)
+                val outputEmbeddings = Array(1) { FloatArray(1024) }
+                val outputSpectrogram = Array(1) { Array(96) { FloatArray(64) } }
 
-            val probabilities = output[0]
+                val outputs = mutableMapOf<Int, Any>(
+                    0 to outputScores,
+                    1 to outputEmbeddings,
+                    2 to outputSpectrogram
+                )
+
+                interpreter?.runForMultipleInputsOutputs(arrayOf(input), outputs)
+                SoundRepository.updateSpectrogram(outputSpectrogram[0])
+            } else {
+                // Simplified model with only scores output
+                interpreter?.run(input, outputScores)
+            }
+
+            val probabilities = outputScores[0]
             val results = mutableMapOf<SoundType, Float>()
 
-            // Find all labels above threshold and map them to our internal SoundType
+            // Debug: Find top 3 labels regardless of mapping
+            val topIndices = probabilities.indices.sortedByDescending { probabilities[it] }.take(3)
+            val debugMsg = topIndices.joinToString { "${labels[it]}: ${"%.2f".format(probabilities[it])}" }
+            Log.v(TAG, "Top Detections: $debugMsg")
+
             probabilities.indices.forEach { i ->
-                if (probabilities[i] > CLASSIFICATION_THRESHOLD) {
+                if (probabilities[i] > INTERNAL_THRESHOLD) {
                     val label = labels[i].lowercase()
                     val type = mapLabelToSoundType(label)
                     if (type != null) {
-                        // Keep the highest confidence for each SoundType
                         results[type] = maxOf(results[type] ?: 0f, probabilities[i])
                     }
                 }
             }
             
             if (results.isNotEmpty()) {
-                Log.d(TAG, "Detections: ${results.map { "${it.key}: ${it.value}" }}")
+                Log.d(TAG, "Mapped Results: ${results.map { "${it.key}: ${it.value}" }}")
             }
             results
         } catch (e: Exception) {
-            Log.e(TAG, "Classification failed: ${e.message}")
+            Log.e(TAG, "Classification Loop Error: ${e.message}")
             emptyMap<SoundType, Float>()
         }
     }
 
     private fun mapLabelToSoundType(label: String): SoundType? {
+        val l = label.lowercase()
         return when {
-            label.contains("siren") || label.contains("emergency vehicle") || 
-            label.contains("ambulance") || label.contains("police car") || 
-            label.contains("fire engine") -> SoundType.SIREN
+            l.contains("siren") || l.contains("emergency vehicle") || 
+            l.contains("ambulance") || l.contains("police car") || 
+            l.contains("fire engine") || l.contains("fire truck") -> SoundType.SIREN
             
-            label.contains("horn") || label.contains("honk") || 
-            label.contains("vehicle horn") || label.contains("car horn") -> SoundType.HORN
+            l.contains("horn") || l.contains("honk") || 
+            l.contains("vehicle horn") || l.contains("car horn") ||
+            l.contains("toot") -> SoundType.HORN
             
-            label.contains("alarm") || label.contains("smoke detector") || 
-            label.contains("fire alarm") || label.contains("buzzer") || 
-            label.contains("beeper") -> SoundType.ALARM
+            l.contains("alarm") || l.contains("smoke detector") || 
+            l.contains("fire alarm") || l.contains("buzzer") || 
+            l.contains("beeper") || l.contains("smoke alarm") -> SoundType.ALARM
             
-            label.contains("doorbell") || label.contains("ding-dong") || 
-            label.contains("chime") -> SoundType.DOORBELL
+            l.contains("doorbell") || l.contains("ding-dong") || 
+            l.contains("chime") -> SoundType.DOORBELL
             
-            label.contains("speech") || label.contains("shout") || 
-            label.contains("yell") || label.contains("conversation") || 
-            label.contains("laughter") || label.contains("crying") || 
-            label.contains("baby cry") -> SoundType.VOICE
+            l.contains("speech") || l.contains("shout") || 
+            l.contains("yell") || l.contains("conversation") || 
+            l.contains("laughter") || l.contains("crying") || 
+            l.contains("baby cry") || l.contains("child speech") ||
+            l.contains("narration") || l.contains("monologue") ||
+            l.contains("babbling") -> SoundType.VOICE
 
             else -> null
         }

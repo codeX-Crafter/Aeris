@@ -43,7 +43,11 @@ fun HomeScreen(
     // ✅ REMOVED duplicate: val modelService: ModelService = viewModel()
 
     val sound: SoundType? by viewModel.currentSound.collectAsState(initial = null)
-    var isOn by remember { mutableStateOf(false) }
+    val confidence by viewModel.confidence.collectAsState()
+    
+    // Track service state globally or via a more stable source if needed, 
+    // but for now, we'll keep it simple.
+    var isOn by remember { mutableStateOf(AudioForegroundService.isRunning) }
 
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
@@ -195,7 +199,9 @@ fun HomeScreen(
                             color = Color(0xFF1A2340)
                         )
                         Text(
-                            text = if (isOn) "System active" else "Tap toggle to start",
+                            text = if (isOn) {
+                                if (currentSound != null) "$confidence% confidence" else "System active"
+                            } else "Tap toggle to start",
                             fontSize = 12.sp,
                             color = Color(0xFF6B7A9A)
                         )
@@ -212,7 +218,6 @@ fun HomeScreen(
 
             Spacer(Modifier.height(28.dp))
 
-            // ── Quick Actions ────────────────────────────────────
             // ── Quick Actions ────────────────────────────────────
             Text(
                 text = "Quick Actions",
@@ -281,7 +286,6 @@ fun HomeScreen(
                         modifier = Modifier.weight(1f),
                         onClick = onConversation
                     )
-                    // ✅ Ghost cards — same size as real cards, fully transparent, not clickable
                     Box(modifier = Modifier.weight(1f))
                     Box(modifier = Modifier.weight(1f))
                 }
@@ -311,9 +315,25 @@ private fun ModelDownloadSection(modelService: ModelService) {
             .padding(bottom = 12.dp)
     )
 
+    // Sound detection — YAMNet is bundled in assets now
+    ModelCard(
+        title = "Smart Classification",
+        subtitle = "YAMNet — bundled local model",
+        fileSize = "Built-in",
+        accentColor = Color(0xFF6FB1FC),
+        isLoaded = true,
+        isLoading = false,
+        isDownloading = false,
+        progress = 1f,
+        readyHint = "YAMNet model active and ready",
+        onDownload = { }
+    )
+
+    Spacer(Modifier.height(12.dp))
+
     // STT — required for sound detection + live captions + conversation listening
     ModelCard(
-        title = "Sound Detection",
+        title = "Live Captions",
         subtitle = "Whisper Tiny — speech recognition",
         fileSize = "~40MB",
         accentColor = Color(0xFF6FB1FC),
@@ -321,7 +341,7 @@ private fun ModelDownloadSection(modelService: ModelService) {
         isLoading = modelService.isSTTLoading,
         isDownloading = modelService.isSTTDownloading,
         progress = modelService.sttDownloadProgress,
-        readyHint = "Say 'siren', 'alarm', 'hello' to detect sounds",
+        readyHint = "Speech-to-text ready for captions",
         onDownload = { modelService.downloadAndLoadSTT() }
     )
 

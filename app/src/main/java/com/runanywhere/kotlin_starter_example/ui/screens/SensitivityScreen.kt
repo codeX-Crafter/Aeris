@@ -15,14 +15,14 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import com.runanywhere.kotlin_starter_example.data.SoundType
+import com.runanywhere.kotlin_starter_example.data.SettingsRepository
 
 @Composable
 fun SensitivityScreen(onBack: () -> Unit) {
 
-    val sensitivities = remember {
-        SoundType.values().associateWith { mutableStateOf(0.5f) }
-    }
-    var adaptiveMode by remember { mutableStateOf(false) }
+    val sensitivities by SettingsRepository.sensitivities.collectAsState()
+    val adaptiveMode by SettingsRepository.adaptiveMode.collectAsState()
+    val notificationsEnabled by SettingsRepository.notificationsEnabled.collectAsState()
 
     Column(
         modifier = Modifier
@@ -46,7 +46,7 @@ fun SensitivityScreen(onBack: () -> Unit) {
                 }
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "Sensitivity",
+                    text = "Settings",
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
@@ -55,6 +55,31 @@ fun SensitivityScreen(onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(20.dp))
+
+        // ── Notifications Toggle ──────────────────────────────────
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = Color(0xFF6FB1FC))
+                Spacer(Modifier.width(12.dp))
+                Text("Push Notifications", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                Switch(
+                    checked = notificationsEnabled,
+                    onCheckedChange = { SettingsRepository.setNotificationsEnabled(it) }
+                )
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
 
         // ── Adaptive Mode ─────────────────────────────────────────
         Card(
@@ -102,7 +127,7 @@ fun SensitivityScreen(onBack: () -> Unit) {
                 }
                 Switch(
                     checked = adaptiveMode,
-                    onCheckedChange = { adaptiveMode = it },
+                    onCheckedChange = { SettingsRepository.setAdaptiveMode(it) },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = Color.White,
                         checkedTrackColor = Color(0xFF6FB1FC)
@@ -114,7 +139,7 @@ fun SensitivityScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(20.dp))
 
         Text(
-            text = "Sound Types",
+            text = "Threshold Sensitivities",
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
             color = Color(0xFF6B7A9A),
@@ -124,11 +149,11 @@ fun SensitivityScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(8.dp))
 
         SoundType.values().forEach { sound ->
-            val valueState = sensitivities[sound]!!
+            val value = sensitivities[sound] ?: 0.5f
             SensitivityCard(
                 sound = sound,
-                value = valueState.value,
-                onChange = { valueState.value = it }
+                value = value,
+                onChange = { SettingsRepository.setSensitivity(sound, it) }
             )
             Spacer(Modifier.height(12.dp))
         }
@@ -145,14 +170,14 @@ private fun SensitivityCard(
 ) {
     val (icon, label) = soundMeta(sound)
     val levelLabel = when {
-        value < 0.35f -> "Low"
+        value < 0.35f -> "High Sensitivity"
         value < 0.65f -> "Balanced"
-        else -> "High"
+        else -> "Low Sensitivity"
     }
     val levelColor = when {
-        value < 0.35f -> Color(0xFFB0B0B0)
+        value < 0.35f -> Color(0xFF6FB1FC)
         value < 0.65f -> Color(0xFFFFD166)
-        else -> Color(0xFF6FB1FC)
+        else -> Color(0xFFB0B0B0)
     }
 
     Card(
@@ -188,7 +213,7 @@ private fun SensitivityCard(
                         color = Color(0xFF1A2340)
                     )
                     Text(
-                        text = sound.name.lowercase().replaceFirstChar { it.uppercase() },
+                        text = "Trigger at ${(value * 100).toInt()}% confidence",
                         fontSize = 12.sp,
                         color = Color(0xFF6B7A9A)
                     )
@@ -218,7 +243,7 @@ private fun SensitivityCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                listOf("Low", "Balanced", "High").forEach { l ->
+                listOf("High Sensitive", "Balanced", "Less Sensitive").forEach { l ->
                     Text(l, fontSize = 10.sp, color = Color(0xFFB0B0B0))
                 }
             }
@@ -232,5 +257,4 @@ private fun soundMeta(sound: SoundType): Pair<ImageVector, String> = when (sound
     SoundType.ALARM    -> Icons.Default.Alarm               to "Alarm"
     SoundType.DOORBELL -> Icons.Default.Doorbell            to "Doorbell"
     SoundType.VOICE    -> Icons.Default.RecordVoiceOver     to "Voice"
-    else               -> Icons.Default.VolumeUp            to sound.name
 }

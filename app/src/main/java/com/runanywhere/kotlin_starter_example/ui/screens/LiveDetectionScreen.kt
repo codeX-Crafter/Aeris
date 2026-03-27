@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import com.runanywhere.kotlin_starter_example.ui.components.WaveformView
+import com.runanywhere.kotlin_starter_example.ui.components.SpectrogramView
 import com.runanywhere.kotlin_starter_example.viewmodel.MainViewModel
 
 @Composable
@@ -23,17 +24,10 @@ fun LiveDetectionScreen(
     onBack: () -> Unit
 ) {
     val sound      by viewModel.currentSound.collectAsState()
-    // ✅ Real confidence from ViewModel, not hardcoded
     val confidence by viewModel.confidence.collectAsState()
 
     val isAlert     = sound != null
     val accentColor = if (isAlert) Color(0xFFFF6B6B) else Color(0xFF6FB1FC)
-
-    val recentHistory = listOf(
-        "Siren"    to "Just now",
-        "Car Horn" to "2 min ago",
-        "Voice"    to "5 min ago"
-    )
 
     Column(
         modifier = Modifier
@@ -57,7 +51,7 @@ fun LiveDetectionScreen(
                 }
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "Live Detection",
+                    text = "Live Intelligence",
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
@@ -65,7 +59,7 @@ fun LiveDetectionScreen(
             }
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(20.dp))
 
         // ── Detection Display ─────────────────────────────────────
         Card(
@@ -85,7 +79,7 @@ fun LiveDetectionScreen(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(72.dp)
+                        .size(64.dp)
                         .clip(CircleShape)
                         .background(accentColor.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center
@@ -95,85 +89,58 @@ fun LiveDetectionScreen(
                         else Icons.Default.GraphicEq,
                         contentDescription = null,
                         tint = accentColor,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(32.dp)
                     )
                 }
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
                 Text(
-                    text = sound?.name?.uppercase() ?: "NO SOUND",
-                    fontSize = 28.sp,
+                    text = sound?.name?.uppercase() ?: "MONITORING",
+                    fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     color = if (isAlert) Color(0xFFFF6B6B) else Color(0xFF1A2340)
                 )
                 Text(
-                    text = if (isAlert) "Sound detected nearby" else "Monitoring environment…",
-                    fontSize = 14.sp,
+                    text = if (isAlert) "$confidence% match probability" else "Listening for environmental cues…",
+                    fontSize = 13.sp,
                     color = Color(0xFF6B7A9A)
                 )
             }
         }
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(16.dp))
 
-        // ── Confidence Bar ────────────────────────────────────────
+        // ── AI Spectrogram (YAMNet Output) ────────────────────────
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2340)),
             elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
         ) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Analytics, contentDescription = null, tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(
-                        text = "Confidence",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF1A2340)
-                    )
-                    Text(
-                        // ✅ Real value from model output
-                        text = "$confidence%",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = when {
-                            confidence >= 80 -> Color(0xFF6BCB77)
-                            confidence >= 50 -> Color(0xFFFFD166)
-                            else             -> Color(0xFFB0B0B0)
-                        }
+                        text = "AI Log-Mel Spectrogram",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.9f)
                     )
                 }
-                Spacer(Modifier.height(10.dp))
-                LinearProgressIndicator(
-                    progress = { confidence / 100f },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    color = when {
-                        confidence >= 80 -> Color(0xFF6BCB77)
-                        confidence >= 50 -> Color(0xFFFFD166)
-                        else             -> Color(0xFFB0B0B0)
-                    },
-                    trackColor = Color(0xFFEEF0F5)
-                )
+                Spacer(Modifier.height(12.dp))
+                SpectrogramView()
                 Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    listOf("LOW", "BALANCED", "HIGH").forEach { label ->
-                        Text(text = label, fontSize = 10.sp, color = Color(0xFFB0B0B0))
-                    }
-                }
+                Text(
+                    text = "Real-time frequency features extracted by YAMNet",
+                    fontSize = 10.sp,
+                    color = Color.White.copy(alpha = 0.5f)
+                )
             }
         }
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(16.dp))
 
         // ── Waveform ──────────────────────────────────────────────
         Card(
@@ -184,24 +151,26 @@ fun LiveDetectionScreen(
             colors = CardDefaults.cardColors(containerColor = Color.White),
             elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
         ) {
-            Column(modifier = Modifier.padding(20.dp)) {
+            Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "Live Waveform",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
+                    text = "Input Waveform",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
                     color = Color(0xFF1A2340)
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(10.dp))
                 WaveformView(
-                    modifier = Modifier.padding(vertical = 8.dp),
+                    modifier = Modifier.padding(vertical = 4.dp),
                     color = accentColor
                 )
             }
         }
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(16.dp))
 
-        // ── Recent History ────────────────────────────────────────
+        // ── History ──────────────────────────────────────────────
+        val history by viewModel.history.collectAsState()
+        
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -212,13 +181,18 @@ fun LiveDetectionScreen(
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(
-                    text = "Recent Detections",
+                    text = "Recent Intelligence",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
                     color = Color(0xFF1A2340)
                 )
                 Spacer(Modifier.height(12.dp))
-                recentHistory.forEachIndexed { index, (label, time) ->
+                
+                if (history.isEmpty()) {
+                    Text("No detections yet", fontSize = 12.sp, color = Color.Gray)
+                }
+
+                history.take(5).forEachIndexed { index, event ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -231,17 +205,18 @@ fun LiveDetectionScreen(
                                 modifier = Modifier
                                     .size(8.dp)
                                     .clip(CircleShape)
-                                    .background(
-                                        if (index == 0) Color(0xFFFF6B6B)
-                                        else Color(0xFFB0B0B0)
-                                    )
+                                    .background(if (index == 0) accentColor else Color(0xFFB0B0B0))
                             )
                             Spacer(Modifier.width(10.dp))
-                            Text(text = label, fontSize = 14.sp, color = Color(0xFF1A2340))
+                            Text(text = event.type.name, fontSize = 14.sp, color = Color(0xFF1A2340))
                         }
-                        Text(text = time, fontSize = 12.sp, color = Color(0xFF6B7A9A))
+                        Text(
+                            text = "${(event.confidence * 100).toInt()}% match", 
+                            fontSize = 12.sp, 
+                            color = Color(0xFF6B7A9A)
+                        )
                     }
-                    if (index < recentHistory.lastIndex) {
+                    if (index < 4 && index < history.size - 1) {
                         HorizontalDivider(color = Color(0xFFF0F2F8), thickness = 1.dp)
                     }
                 }
