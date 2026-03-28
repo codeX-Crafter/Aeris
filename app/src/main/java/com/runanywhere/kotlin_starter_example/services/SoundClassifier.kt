@@ -44,7 +44,7 @@ class SoundClassifier(private val context: Context) {
             
             val outputCount = interpreter?.outputTensorCount ?: 0
             Log.d(TAG, "YAMNet initialized. Labels: ${labels.size}, Outputs: $outputCount")
-            
+
             for (i in 0 until outputCount) {
                 val tensor = interpreter?.getOutputTensor(i)
                 Log.d(TAG, "Output $i: Name=${tensor?.name()}, Shape=${tensor?.shape()?.contentToString()}")
@@ -92,14 +92,14 @@ class SoundClassifier(private val context: Context) {
         if (audioBuffer.size < REQUIRED_SAMPLES) return@withContext emptyMap<SoundType, Float>()
 
         val input = audioBuffer.take(REQUIRED_SAMPLES).toFloatArray()
-        
+
         // 50% overlap
         repeat(REQUIRED_SAMPLES / 2) {
             if (audioBuffer.isNotEmpty()) audioBuffer.removeAt(0)
         }
 
         // Removed RMS check to ensure we process even quiet sounds for debugging
-        
+
         return@withContext try {
             val outputCount = interpreter?.outputTensorCount ?: 0
             val outputScores = Array(1) { FloatArray(labels.size) }
@@ -139,7 +139,7 @@ class SoundClassifier(private val context: Context) {
                     }
                 }
             }
-            
+
             if (results.isNotEmpty()) {
                 Log.d(TAG, "Mapped Results: ${results.map { "${it.key}: ${it.value}" }}")
             }

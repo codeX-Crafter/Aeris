@@ -58,7 +58,7 @@ fun ConversationScreen(
     var isSpeaking by remember { mutableStateOf(false) }
     var listenJob by remember { mutableStateOf<Job?>(null) }
     var hasPermission by remember { mutableStateOf(false) }
-    var suggestions by remember { mutableStateOf(listOf<String>()) } // ✅ ADD HERE
+    var suggestions by remember { mutableStateOf(listOf<String>()) }
 
     val softBlue = Color(0xFF6FB1FC)
     val purple = Color(0xFF9C6FFC)
@@ -289,7 +289,26 @@ fun ConversationScreen(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
 
-                // Listen button
+                // 1. Suggestions (MOVED ABOVE INPUT)
+                if (suggestions.isNotEmpty()) {
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(items = suggestions) { suggestion: String ->
+                            OutlinedButton(
+                                onClick = { myReply = suggestion },
+                                shape = RoundedCornerShape(50.dp),
+                                border = BorderStroke(1.dp, purple.copy(alpha = 0.3f)),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Black)
+                            ) {
+                                Text(suggestion, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+
+                // 2. Listen button
                 Button(
                     onClick = {
                         if (!isListening) listenForOther()
@@ -319,9 +338,9 @@ fun ConversationScreen(
                     }
                 }
 
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
 
-                // My reply input
+                // 3. My reply input
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -336,7 +355,6 @@ fun ConversationScreen(
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = Color.Black,
                             unfocusedTextColor = Color.Black,
-
                             focusedBorderColor = purple,
                             unfocusedBorderColor = Color(0xFFEEF0F5)
                         ),
@@ -346,7 +364,8 @@ fun ConversationScreen(
                         onClick = { speakMyReply() },
                         modifier = Modifier.size(52.dp),
                         containerColor = purple,
-                        contentColor = Color.White
+                        contentColor = Color.White,
+                        elevation = FloatingActionButtonDefaults.elevation(0.dp)
                     ) {
                         if (isSpeaking) {
                             CircularProgressIndicator(
@@ -356,23 +375,6 @@ fun ConversationScreen(
                             )
                         } else {
                             Icon(Icons.Default.VolumeUp, contentDescription = "Speak")
-                        }
-                    }
-                }
-                // ✅ SUGGESTIONS UI (ADD HERE — OUTSIDE ROW)
-                if (suggestions.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(items = suggestions) { suggestion: String ->
-                            OutlinedButton(
-                                onClick = { myReply = suggestion },
-                                shape = RoundedCornerShape(50.dp)
-                            ) {
-                                Text(suggestion, fontSize = 12.sp, color = Color.Black)
-                            }
                         }
                     }
                 }

@@ -40,13 +40,10 @@ fun HomeScreen(
     onConversation: () -> Unit
 ) {
     val context = LocalContext.current
-    // ✅ REMOVED duplicate: val modelService: ModelService = viewModel()
 
     val sound: SoundType? by viewModel.currentSound.collectAsState(initial = null)
     val confidence by viewModel.confidence.collectAsState()
     
-    // Track service state globally or via a more stable source if needed, 
-    // but for now, we'll keep it simple.
     var isOn by remember { mutableStateOf(AudioForegroundService.isRunning) }
 
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")

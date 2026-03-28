@@ -1,5 +1,6 @@
 package com.runanywhere.kotlin_starter_example.services
 
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -26,11 +27,12 @@ import com.runanywhere.sdk.public.extensions.isTTSVoiceLoaded
 import com.runanywhere.sdk.public.extensions.isVLMModelLoaded
 import com.runanywhere.sdk.public.extensions.isVoiceAgentReady
 import com.runanywhere.sdk.public.extensions.availableModels
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 class ModelService : ViewModel() {
+
+    private val TAG = "ModelService"
 
     // ── LLM state ─────────────────────────────────────────────
     var isLLMDownloading by mutableStateOf(false)
@@ -134,30 +136,37 @@ class ModelService : ViewModel() {
     }
 
     private suspend fun refreshModelState() {
+        Log.d(TAG, "Refreshing all model states")
         isLLMLoaded = RunAnywhere.isLLMModelLoaded()
         isSTTLoaded = RunAnywhere.isSTTModelLoaded()
         isTTSLoaded = RunAnywhere.isTTSVoiceLoaded()
         isVLMLoaded = RunAnywhere.isVLMModelLoaded
         isVoiceAgentReady = RunAnywhere.isVoiceAgentReady()
+        Log.d(TAG, "Sync complete: STT=$isSTTLoaded, TTS=$isTTSLoaded, LLM=$isLLMLoaded")
     }
 
     private suspend fun isModelDownloaded(modelId: String): Boolean {
         val models = RunAnywhere.availableModels()
         val model = models.find { it.id == modelId }
-        return model?.localPath != null
+        val exists = model?.localPath != null
+        Log.d(TAG, "Checking disk for $modelId: exists=$exists")
+        return exists
     }
 
     fun downloadAndLoadLLM() {
         if (isLLMDownloading || isLLMLoading) return
         viewModelScope.launch {
             try {
+                Log.d(TAG, "Starting LLM process")
                 errorMessage = null
+                refreshModelState()
+                
                 if (!isModelDownloaded(LLM_MODEL_ID)) {
                     isLLMDownloading = true
-                    llmDownloadProgress = 0f
                     RunAnywhere.downloadModel(LLM_MODEL_ID)
                         .catch { e ->
-                            errorMessage = "LLM download failed: ${e.message}"
+                            Log.e(TAG, "LLM Download Catch: ${e.message}")
+                            errorMessage = "LLM Download Error: ${e.message}"
                             isLLMDownloading = false
                         }
                         .collect { progress ->
@@ -165,13 +174,15 @@ class ModelService : ViewModel() {
                         }
                     isLLMDownloading = false
                 }
+                
                 isLLMLoading = true
+                Log.d(TAG, "Invoking loadLLMModel")
                 RunAnywhere.loadLLMModel(LLM_MODEL_ID)
-                isLLMLoaded = true
-                isLLMLoading = false
                 refreshModelState()
             } catch (e: Exception) {
-                errorMessage = "LLM load failed: ${e.message}"
+                Log.e(TAG, "LLM Critical Error: ${e.message}")
+                errorMessage = "LLM Load Failed: ${e.message}"
+            } finally {
                 isLLMDownloading = false
                 isLLMLoading = false
             }
@@ -182,13 +193,16 @@ class ModelService : ViewModel() {
         if (isSTTDownloading || isSTTLoading) return
         viewModelScope.launch {
             try {
+                Log.d(TAG, "Starting STT process")
                 errorMessage = null
+                refreshModelState()
+
                 if (!isModelDownloaded(STT_MODEL_ID)) {
                     isSTTDownloading = true
-                    sttDownloadProgress = 0f
                     RunAnywhere.downloadModel(STT_MODEL_ID)
                         .catch { e ->
-                            errorMessage = "STT download failed: ${e.message}"
+                            Log.e(TAG, "STT Download Catch: ${e.message}")
+                            errorMessage = "STT Download Error: ${e.message}"
                             isSTTDownloading = false
                         }
                         .collect { progress ->
@@ -196,13 +210,15 @@ class ModelService : ViewModel() {
                         }
                     isSTTDownloading = false
                 }
+                
                 isSTTLoading = true
+                Log.d(TAG, "Invoking loadSTTModel")
                 RunAnywhere.loadSTTModel(STT_MODEL_ID)
-                isSTTLoaded = true
-                isSTTLoading = false
                 refreshModelState()
             } catch (e: Exception) {
-                errorMessage = "STT load failed: ${e.message}"
+                Log.e(TAG, "STT Critical Error: ${e.message}")
+                errorMessage = "STT Load Failed: ${e.message}"
+            } finally {
                 isSTTDownloading = false
                 isSTTLoading = false
             }
@@ -213,13 +229,16 @@ class ModelService : ViewModel() {
         if (isTTSDownloading || isTTSLoading) return
         viewModelScope.launch {
             try {
+                Log.d(TAG, "Starting TTS process")
                 errorMessage = null
+                refreshModelState()
+
                 if (!isModelDownloaded(TTS_MODEL_ID)) {
                     isTTSDownloading = true
-                    ttsDownloadProgress = 0f
                     RunAnywhere.downloadModel(TTS_MODEL_ID)
                         .catch { e ->
-                            errorMessage = "TTS download failed: ${e.message}"
+                            Log.e(TAG, "TTS Download Catch: ${e.message}")
+                            errorMessage = "TTS Download Error: ${e.message}"
                             isTTSDownloading = false
                         }
                         .collect { progress ->
@@ -227,13 +246,15 @@ class ModelService : ViewModel() {
                         }
                     isTTSDownloading = false
                 }
+                
                 isTTSLoading = true
+                Log.d(TAG, "Invoking loadTTSVoice")
                 RunAnywhere.loadTTSVoice(TTS_MODEL_ID)
-                isTTSLoaded = true
-                isTTSLoading = false
                 refreshModelState()
             } catch (e: Exception) {
-                errorMessage = "TTS load failed: ${e.message}"
+                Log.e(TAG, "TTS Critical Error: ${e.message}")
+                errorMessage = "TTS Load Failed: ${e.message}"
+            } finally {
                 isTTSDownloading = false
                 isTTSLoading = false
             }
@@ -244,13 +265,16 @@ class ModelService : ViewModel() {
         if (isVLMDownloading || isVLMLoading) return
         viewModelScope.launch {
             try {
+                Log.d(TAG, "Starting VLM process")
                 errorMessage = null
+                refreshModelState()
+
                 if (!isModelDownloaded(VLM_MODEL_ID)) {
                     isVLMDownloading = true
-                    vlmDownloadProgress = 0f
                     RunAnywhere.downloadModel(VLM_MODEL_ID)
                         .catch { e ->
-                            errorMessage = "VLM download failed: ${e.message}"
+                            Log.e(TAG, "VLM Download Catch: ${e.message}")
+                            errorMessage = "VLM Download Error: ${e.message}"
                             isVLMDownloading = false
                         }
                         .collect { progress ->
@@ -258,62 +282,42 @@ class ModelService : ViewModel() {
                         }
                     isVLMDownloading = false
                 }
+                
                 isVLMLoading = true
+                Log.d(TAG, "Invoking loadVLMModel")
                 RunAnywhere.loadVLMModel(VLM_MODEL_ID)
-                isVLMLoaded = true
-                isVLMLoading = false
                 refreshModelState()
             } catch (e: Exception) {
-                errorMessage = "VLM load failed: ${e.message}"
+                Log.e(TAG, "VLM Critical Error: ${e.message}")
+                errorMessage = "VLM Load Failed: ${e.message}"
+            } finally {
                 isVLMDownloading = false
                 isVLMLoading = false
             }
         }
     }
 
-    // ✅ Fixed — sequential downloads, STT first (smallest + most critical),
-    //    TTS second, LLM last (largest ~400MB)
     fun downloadAndLoadAllModels() {
         viewModelScope.launch {
-            try {
-                // ── STT first ─────────────────────────────────
-                if (!isSTTLoaded) {
-                    downloadAndLoadSTT()
-                    while (isSTTDownloading || isSTTLoading) {
-                        delay(500)
-                    }
-                }
-
-                // ── TTS second ────────────────────────────────
-                if (!isTTSLoaded) {
-                    downloadAndLoadTTS()
-                    while (isTTSDownloading || isTTSLoading) {
-                        delay(500)
-                    }
-                }
-
-                // ── LLM last (largest file) ───────────────────
-                if (!isLLMLoaded) {
-                    downloadAndLoadLLM()
-                    // No need to wait — LLM is last, coroutine ends naturally
-                }
-
-            } catch (e: Exception) {
-                errorMessage = "Download all failed: ${e.message}"
-            }
+            Log.d(TAG, "Full Download All Sequence Initiated")
+            downloadAndLoadSTT()
+            downloadAndLoadTTS()
+            downloadAndLoadLLM()
         }
     }
 
     fun unloadAllModels() {
         viewModelScope.launch {
             try {
+                Log.d(TAG, "Unloading all models from memory")
                 RunAnywhere.unloadLLMModel()
                 RunAnywhere.unloadSTTModel()
                 RunAnywhere.unloadTTSVoice()
                 try { RunAnywhere.unloadVLMModel() } catch (_: Exception) {}
                 refreshModelState()
             } catch (e: Exception) {
-                errorMessage = "Failed to unload models: ${e.message}"
+                Log.e(TAG, "Unload Failure: ${e.message}")
+                errorMessage = "Unload Failed: ${e.message}"
             }
         }
     }
