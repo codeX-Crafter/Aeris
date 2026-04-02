@@ -1,296 +1,136 @@
-# RunAnywhere Kotlin SDK Starter
+# Aeris
 
-A comprehensive Android starter app demonstrating the **RunAnywhere SDK** capabilities - privacy-first, on-device AI for Android with Kotlin and Jetpack Compose.
+> Making sound visible.
 
-## Features
+Aeris is a real-time assistive Android application for deaf and hard-of-hearing individuals. It continuously listens to the environment using on-device AI and converts critical sounds into haptic alerts, visual notifications, and live captions - privately, offline, and instantly.
 
-This starter app showcases all major capabilities of the RunAnywhere SDK:
+---
 
-### 🧠 Chat (LLM Text Generation)
-- On-device text generation using **SmolLM2 360M**
-- Real-time chat interface with message history
-- Powered by llama.cpp backend
+## What It Does
 
-### 🎤 Speech to Text (STT)
-- Real-time speech recognition using **Whisper Tiny**
-- Microphone permission handling
-- Voice activity detection
-- Powered by Sherpa-ONNX backend
+### Always-On Sound Awareness
+Aeris runs persistently in the background, detecting five critical sound categories in real time:
+- Alarms (fire alarm, smoke detector)
+- Sirens (ambulance, police, civil defense)
+- Horns (car horn, air horn)
+- Doorbells and knocks
+- Human voice and speech
 
-### 🔊 Text to Speech (TTS)
-- Natural voice synthesis using **Piper TTS**
-- Sample texts and custom input
-- High-quality US English voice (Lessac)
-- Powered by Sherpa-ONNX backend
+Every detection triggers an immediate haptic pattern and an on-screen notification - even when the phone is locked.
 
-### 🎯 Voice Pipeline (Voice Agent)
-- Complete voice conversation pipeline
-- Combines STT → LLM → TTS
-- Real-time conversation flow
-- Status indicators for each stage
+### Intelligent Haptic Alerts
+Each sound type has a distinct vibration signature. A siren fires a rapid triple pulse. A doorbell triggers a gentle double tap. Users know what they're being alerted to without looking at the screen.
+
+### Adjustable Sensitivity
+Detection thresholds can be tuned independently per sound category - reducing false positives in noisy environments while staying sensitive to what matters.
+
+### AI Conversation Co-pilot
+A dedicated screen for two-way assisted communication.
+- Incoming speech is transcribed in real time using on-device speech-to-text
+- The on-device LLM reads conversation context and suggests natural replies
+- Users tap a suggestion or type their own
+- Aeris speaks the response aloud via text-to-speech
+
+### Sleep Mode
+Aeris stays active overnight. It wakes the user the moment a critical sound is detected - alarm, siren, baby cry or knock - without any manual setup.
+
+### Fully On-Device, Zero Cloud
+Every model - sound classifier, STT, LLM, TTS - runs locally on the device. No audio, no text, no personal data ever leaves the phone.
+
+---
+
+## Tech Stack
+
+| Component | Technology |
+|---|---|
+| Sound Classification | YAMNet via TensorFlow Lite |
+| Speech-to-Text | Whisper Tiny via Sherpa-ONNX |
+| Reply Suggestions | SmolLM2 via LlamaCPP |
+| Text-to-Speech | Piper TTS via Sherpa-ONNX |
+| Platform | Android (Kotlin) |
+| ML Runtimes | ONNX Runtime, LlamaCPP, TFLite |
+| Haptics | Android Vibrator / VibrationEffect API |
+
+---
+
+## Architecture
+```
+Microphone Input
+      ↓
+Audio Pipeline (16kHz, mono, sliding window)
+      ↓
+YAMNet TFLite Model (on-device)
+      ↓
+Sound Classification + Confidence Score
+      ↓
+Alert Engine → Haptic Pattern + Visual Notification
+      ↓
+(If voice detected) → STT → Transcript
+      ↓
+LLM → Reply Suggestions
+      ↓
+User Response → TTS → Spoken Aloud
+```
+
+---
 
 ## Getting Started
 
 ### Prerequisites
-
-- **Android Studio**: Hedgehog (2023.1.1) or later
-- **Minimum SDK**: API 26 (Android 8.0)
-- **Target SDK**: API 35 (Android 15)
-- **Kotlin**: 2.0.21 or later
-- **Java**: 17
+- Android Studio Hedgehog or later
+- Android device running API 26 (Oreo) or above
+- Minimum 4GB RAM recommended for on-device LLM
 
 ### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd starter_apps/kotlinstarterexample
-   ```
-
-2. **Open in Android Studio**
-   - Open Android Studio
-   - Select "Open an Existing Project"
-   - Navigate to the `kotlinstarterexample` folder
-   - Click "OK"
-
-3. **Sync Gradle**
-   - Android Studio will automatically sync Gradle
-   - If not, click "Sync Now" in the notification bar
-
-4. **Run the app**
-   - Connect an Android device or start an emulator
-   - Click the "Run" button (▶️) in Android Studio
-   - Select your device/emulator
-   - The app will build and install
-
-### First Launch
-
-On the first launch:
-
-1. **Home Screen**: You'll see 4 feature cards
-2. **Load Models**: Each feature requires downloading AI models:
-   - **LLM**: ~400 MB (SmolLM2 360M)
-   - **STT**: ~75 MB (Whisper Tiny)
-   - **TTS**: ~20 MB (Piper TTS)
-3. **Grant Permissions**: STT and Voice Pipeline require microphone permission
-4. **Start Using**: Once models are loaded, all features are ready!
-
-## Architecture
-
-### Project Structure
-
-```
-app/src/main/java/com/runanywhere/kotlin_starter_example/
-├── MainActivity.kt                    # App entry point
-├── services/
-│   └── ModelService.kt               # Model management (download, load, unload)
-└── ui/
-    ├── theme/                        # App theme and colors
-    │   ├── Theme.kt
-    │   └── Type.kt
-    ├── components/                   # Reusable UI components
-    │   ├── FeatureCard.kt
-    │   └── ModelLoaderWidget.kt
-    └── screens/                      # Feature screens
-        ├── HomeScreen.kt
-        ├── ChatScreen.kt
-        ├── SpeechToTextScreen.kt
-        ├── TextToSpeechScreen.kt
-        └── VoicePipelineScreen.kt
+```bash
+git clone https://github.com/yourusername/aeris.git
+cd aeris
 ```
 
-### Key Technologies
+Open in Android Studio, sync Gradle, and run on a physical device.
 
-- **Jetpack Compose**: Modern declarative UI
-- **Material 3**: Latest Material Design
-- **Navigation Compose**: Screen navigation
-- **Coroutines & Flow**: Asynchronous operations
-- **ViewModel**: State management
-- **RunAnywhere SDK v0.16.0-test.39**: On-device AI
-
-## RunAnywhere SDK Integration
-
-### Dependencies
-
-The app uses three RunAnywhere packages:
-
-```kotlin
-// build.gradle.kts (app module)
-dependencies {
-    // Core SDK
-    implementation("ai.runanywhere:runanywhere-kotlin:0.16.0-test.39")
-    
-    // Backends
-    implementation("ai.runanywhere:runanywhere-llamacpp:0.16.0-test.39")  // LLM
-    implementation("ai.runanywhere:runanywhere-onnx:0.16.0-test.39")      // STT/TTS
-}
-```
-
-### Initialization
-
-```kotlin
-// MainActivity.kt
-RunAnywhere.initialize(environment = SDKEnvironment.DEVELOPMENT)
-ModelService.registerDefaultModels()
-```
-
-### Model Registration
-
-Models are registered in `ModelService.kt`:
-
-```kotlin
-// LLM Model
-RunAnywhere.registerModel(
-    id = "smollm2-360m-instruct-q8_0",
-    name = "SmolLM2 360M Instruct Q8_0",
-    url = "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct-GGUF/resolve/main/smollm2-360m-instruct-q8_0.gguf",
-    framework = InferenceFramework.LLAMA_CPP,
-    memoryRequirement = 400_000_000
-)
-
-// STT Model
-RunAnywhere.registerModel(
-    id = "sherpa-onnx-whisper-tiny.en",
-    name = "Sherpa Whisper Tiny (ONNX)",
-    url = "https://github.com/RunanywhereAI/sherpa-onnx/releases/download/runanywhere-models-v1/sherpa-onnx-whisper-tiny.en.tar.gz",
-    framework = InferenceFramework.ONNX,
-    category = ModelCategory.SPEECH_RECOGNITION
-)
-
-// TTS Model
-RunAnywhere.registerModel(
-    id = "vits-piper-en_US-lessac-medium",
-    name = "Piper TTS (US English - Medium)",
-    url = "https://github.com/RunanywhereAI/sherpa-onnx/releases/download/runanywhere-models-v1/vits-piper-en_US-lessac-medium.tar.gz",
-    framework = InferenceFramework.ONNX,
-    category = ModelCategory.SPEECH_SYNTHESIS
-)
-```
-
-### Usage Examples
-
-#### Chat (LLM)
-```kotlin
-val response = RunAnywhere.chat("Explain AI in simple terms")
-```
-
-#### Speech to Text (STT)
-```kotlin
-val audioData: ByteArray = recordAudio()
-val transcription = RunAnywhere.transcribe(audioData)
-```
-
-#### Text to Speech (TTS)
-```kotlin
-RunAnywhere.speak("Hello, world!")
-```
-
-#### Voice Pipeline
-```kotlin
-RunAnywhere.startVoiceSession().collect { event ->
-    when (event) {
-        is VoiceSessionEvent.Listening -> updateUI("Listening...")
-        is VoiceSessionEvent.Transcribed -> updateUI("You: ${event.text}")
-        is VoiceSessionEvent.Thinking -> updateUI("Thinking...")
-        is VoiceSessionEvent.Responded -> updateUI("AI: ${event.text}")
-        is VoiceSessionEvent.Speaking -> updateUI("Speaking...")
-    }
-}
-```
-
-## Performance
-
-### Model Sizes
-- **LLM (SmolLM2 360M)**: ~400 MB
-- **STT (Whisper Tiny)**: ~75 MB
-- **TTS (Piper)**: ~20 MB
-- **Total**: ~495 MB
-
-### Inference Speed
-- **LLM**: 5-15 tokens/sec (device dependent)
-- **STT**: Real-time transcription
-- **TTS**: Real-time synthesis
-
-### Device Requirements
-- **RAM**: Minimum 2GB recommended
-- **Storage**: 1GB free space for models
-- **CPU**: ARMv8 64-bit recommended (supports ARMv7)
-
-## Customization
-
-### Changing Models
-
-To use different models, update `ModelService.kt`:
-
-```kotlin
-companion object {
-    const val LLM_MODEL_ID = "your-model-id"
-    const val STT_MODEL_ID = "your-stt-model-id"
-    const val TTS_MODEL_ID = "your-tts-model-id"
-    
-    fun registerDefaultModels() {
-        RunAnywhere.registerModel(
-            id = LLM_MODEL_ID,
-            name = "Your Model Name",
-            url = "your-model-url",
-            framework = InferenceFramework.LLAMA_CPP
-        )
-        // ... register other models
-    }
-}
-```
-
-### Customizing UI
-
-All UI colors and themes are defined in:
-- `ui/theme/Theme.kt` - Color palette
-- `ui/theme/Type.kt` - Typography
-
-## Troubleshooting
-
-### Models Not Downloading
-- Check internet connection
-- Verify URLs in `ModelService.kt`
-- Check device storage space
-
-### App Crashes on Launch
-- Ensure minimum SDK 26
-- Check Gradle sync completed successfully
-- Verify all dependencies are downloaded
-
-### Microphone Permission Denied
-- Go to Settings → Apps → RunAnywhere Kotlin → Permissions
-- Enable "Microphone" permission
-
-### Poor Performance
-- Use a device with at least 2GB RAM
-- Close other apps to free memory
-- Consider using smaller models
-
-## Privacy & Security
-
-All AI processing happens **100% on-device**:
-- ✅ No data sent to servers
-- ✅ No internet required (after model download)
-- ✅ Complete privacy
-- ✅ Works offline
-
-## Resources
-
-- [RunAnywhere SDK Documentation](https://github.com/RunanywhereAI/runanywhere-sdks)
-- [Kotlin SDK API Reference](../../sdks/sdk/runanywhere-kotlin/Documentation.md)
-- [Release Notes](https://github.com/RunanywhereAI/runanywhere-sdks/releases/tag/v0.16.0-test.39)
-
-## License
-
-See the [LICENSE](../../LICENSE) file for details.
-
-## Support
-
-For issues and questions:
-- GitHub Issues: [runanywhere-sdks/issues](https://github.com/RunanywhereAI/runanywhere-sdks/issues)
-- Documentation: [RunAnywhere Docs](https://github.com/RunanywhereAI/runanywhere-sdks)
+> Note: Sound classification models are bundled in `assets/`. Interaction models (STT, TTS, LLM) are downloaded on first launch via the Home screen.
 
 ---
 
-**Built with ❤️ using RunAnywhere SDK v0.16.0-test.39**
+## Project Structure
+```
+app/src/main/
+├── assets/                          # Bundled YAMNet models
+└── java/com/runanywhere/kotlin_starter_example/
+    ├── data/                        # Repositories and Data models
+    ├── services/                    # Background Service, Audio & AI engines
+    ├── ui/                          # Screens and Theme
+    │   └── screens/
+    └── viewmodel/                   # State management
+```
+
+---
+
+## Known Limitations
+
+- Multi-speaker separation in noisy environments is not yet reliable
+- Accuracy drops with heavy accents on the STT model
+- Real-time sign language recognition is not yet supported
+- On-device LLM requires sufficient device RAM to run smoothly
+
+---
+
+## Roadmap
+
+- [ ] Tone and emotion detection alongside captions
+- [ ] Speaker identification in group conversations
+- [ ] Medical appointment mode - clinic, classroom, workplace
+- [ ] Context-specific modes - clinic, classroom, workplace
+- [ ] Smartwatch and wearable integration
+- [ ] Custom sound training - teach Aeris new sounds from your environment
+
+---
+
+## Why Aeris
+
+430 million people live with disabling hearing loss globally. Existing solutions solve one piece - caption apps ignore environmental sounds, smart home alerters don't travel with you, hearing aids cost thousands and don't help everyone.
+
+Aeris is the first tool that combines real-time environmental sound detection, live captions, and two-way AI-assisted communication in a single offline app on a phone people already carry.
+
+The people who need it most should never have to pay for it. Aeris is free for end users. Always.
