@@ -43,6 +43,7 @@ import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.foundation.layout.navigationBarsPadding
 
 @Composable
 fun LiveCaptionScreen(
@@ -63,7 +64,7 @@ fun LiveCaptionScreen(
 
     // ── PDF Export Observation ────────────────────────────────
     val exportState by mainViewModel.exportState.collectAsState(ExportState.Idle)
-    
+
     LaunchedEffect(exportState) {
         when (val state = exportState) {
             is ExportState.Success -> {
@@ -161,7 +162,9 @@ fun LiveCaptionScreen(
         }
     ) {
         Scaffold(
-            containerColor = Color(0xFFF8F9FA), // Fix black rectangle by applying background color here
+
+            containerColor = Color.Transparent,
+
             topBar = {
                 Box(
                     modifier = Modifier
@@ -206,7 +209,10 @@ fun LiveCaptionScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
+            .padding(
+                        top = padding.calculateTopPadding()
+                    )
+                    .background(Color(0xFFF8F9FA))
             ) {
                 // Captions list
                 Box(modifier = Modifier.weight(1f)) {

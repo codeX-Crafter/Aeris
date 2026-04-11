@@ -48,6 +48,7 @@ import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.foundation.layout.navigationBarsPadding
 
 // ── Data models ──────────────────────────────────────────────────────────────
 
@@ -340,6 +341,7 @@ fun ConversationScreen(
     ) {
         // ── Main UI ───────────────────────────────────────────
         Scaffold(
+            containerColor = Color(0xFFF8F9FA),
             topBar = {
                 Box(
                     modifier = Modifier
@@ -385,11 +387,13 @@ fun ConversationScreen(
                     }
                 }
             }
-        ) { innerPadding ->
+        ) {padding ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
+                    .padding(
+                        top = padding.calculateTopPadding()
+                    )
                     .background(Color(0xFFF8F9FA))
             ) {
                 // ── Model status bar ──────────────────────────
