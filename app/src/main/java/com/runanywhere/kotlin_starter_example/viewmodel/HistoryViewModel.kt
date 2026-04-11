@@ -13,6 +13,7 @@ import com.runanywhere.kotlin_starter_example.data.HistoryContentLine
 import com.runanywhere.kotlin_starter_example.data.HistoryType
 import com.runanywhere.kotlin_starter_example.data.SyncedHistoryItem
 import com.runanywhere.kotlin_starter_example.services.EncryptionManager
+import com.runanywhere.kotlin_starter_example.services.PdfExporter
 import com.runanywhere.sdk.public.RunAnywhere
 import com.runanywhere.sdk.public.extensions.chat
 import kotlinx.coroutines.Dispatchers
@@ -66,7 +67,6 @@ class HistoryViewModel : ViewModel() {
                         val item = doc.toObject(SyncedHistoryItem::class.java)
                         item?.copy(
                             id = doc.id,
-                            // Decrypt content when loading from cloud
                             content = item.content.map { it.copy(text = EncryptionManager.decrypt(it.text, uid)) }
                         )
                     } catch (ex: Exception) {
@@ -91,7 +91,6 @@ class HistoryViewModel : ViewModel() {
             try {
                 val id = UUID.randomUUID().toString()
                 
-                // 1. Generate Title via LLM (unencrypted for searchability of titles if desired, or we can encrypt it too)
                 val contextText = content.take(10).joinToString("\n") { it.text }
                 val prompt = "Generate a 2-4 word title for this conversation snippet. Respond with ONLY the title.\nSnippet: $contextText"
                 
@@ -107,7 +106,6 @@ class HistoryViewModel : ViewModel() {
                     title = if (type == HistoryType.CONVERSATION) "Conversation" else "Live Captions"
                 }
 
-                // 2. Encrypt message content before saving to Firestore
                 val encryptedContent = content.map { 
                     it.copy(text = EncryptionManager.encrypt(it.text, uid)) 
                 }
@@ -137,7 +135,6 @@ class HistoryViewModel : ViewModel() {
         val uid = auth.currentUser?.uid ?: return
         viewModelScope.launch {
             try {
-                // Snappy UI: remove from local list immediately
                 _historyItems.value = _historyItems.value.filter { it.id != itemId }
                 db.collection("users")
                     .document(uid)
@@ -156,7 +153,6 @@ class HistoryViewModel : ViewModel() {
         val uid = auth.currentUser?.uid ?: return
         viewModelScope.launch {
             try {
-                // Snappy UI: update local list immediately
                 _historyItems.value = _historyItems.value.map { 
                     if (it.id == itemId) it.copy(title = newTitle) else it 
                 }
@@ -176,23 +172,16 @@ class HistoryViewModel : ViewModel() {
     fun shareHistoryItem(context: Context, item: SyncedHistoryItem) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val text = buildString {
-                    appendLine("Aeris - ${item.title}")
-                    appendLine("Date: ${java.util.Date(item.timestamp)}")
-                    appendLine("--------------------------")
-                    item.content.forEach { line ->
-                        val sender = if (line.fromOther) "Person" else "Me"
-                        appendLine("$sender: ${line.text}")
+                val uri = PdfExporter.exportHistory(context, item)
+                if (uri != null) {
+                    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "application/pdf"
+                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
-                }
-                
-                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(android.content.Intent.EXTRA_SUBJECT, item.title)
-                    putExtra(android.content.Intent.EXTRA_TEXT, text)
-                }
-                withContext(Dispatchers.Main) {
-                    context.startActivity(android.content.Intent.createChooser(intent, "Share Session"))
+                    withContext(Dispatchers.Main) {
+                        context.startActivity(android.content.Intent.createChooser(intent, "Share Session PDF"))
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("HistoryViewModel", "Error sharing item", e)

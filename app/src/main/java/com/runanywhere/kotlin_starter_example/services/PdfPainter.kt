@@ -3,6 +3,7 @@ package com.runanywhere.kotlin_starter_example.services
 import android.graphics.*
 import android.graphics.pdf.PdfDocument
 import com.runanywhere.kotlin_starter_example.data.CaptionLine
+import com.runanywhere.kotlin_starter_example.data.HistoryContentLine
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -81,6 +82,41 @@ class PdfPainter(
         lines.forEach { line ->
             checkPageBreak(22f)
             canvas.drawText(line, margin, currentY + 14f, textPaint)
+            currentY += 20f
+        }
+    }
+
+    fun drawHistoryLine(line: HistoryContentLine) {
+        val sender = if (line.fromOther) "Person" else "Me"
+        val senderPaint = Paint().apply {
+            textSize = 11f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            color = if (line.fromOther) Color.parseColor("#1A73E8") else Color.parseColor("#9C6FFC")
+        }
+
+        val textPaint = Paint().apply {
+            textSize = 13f
+            color = Color.parseColor("#1A1A1A")
+        }
+
+        val timePaint = Paint().apply {
+            textSize = 10f
+            color = Color.parseColor("#999999")
+        }
+
+        val timeFormat = SimpleDateFormat("h:mm:ss a", Locale.getDefault())
+        val timeString = timeFormat.format(Date(line.timestamp))
+
+        checkPageBreak(50f)
+
+        canvas.drawText("$sender • $timeString", margin, currentY + 12f, senderPaint)
+        currentY += 16f
+
+        val lines = wrapText(line.text, textPaint, contentWidth)
+
+        lines.forEach { textLine ->
+            checkPageBreak(22f)
+            canvas.drawText(textLine, margin, currentY + 14f, textPaint)
             currentY += 20f
         }
     }

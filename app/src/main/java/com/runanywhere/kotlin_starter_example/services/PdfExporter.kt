@@ -11,8 +11,12 @@ import android.provider.MediaStore
 import androidx.annotation.RequiresApi
 import androidx.core.content.FileProvider
 import com.runanywhere.kotlin_starter_example.data.CaptionsExport
+import com.runanywhere.kotlin_starter_example.data.HistoryType
+import com.runanywhere.kotlin_starter_example.data.SyncedHistoryItem
 import java.io.File
 import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.*
 
 object PdfExporter {
 
@@ -47,6 +51,37 @@ object PdfExporter {
         painter.finish()
 
         return saveToStorage(context.applicationContext, document, exportData.filename)
+            .also { document.close() }
+    }
+
+    fun exportHistory(
+        context: Context,
+        item: SyncedHistoryItem
+    ): Uri? {
+        val document = PdfDocument()
+        val painter = PdfPainter(document, PAGE_WIDTH, PAGE_HEIGHT, MARGIN)
+
+        val dateStr = SimpleDateFormat("MMMM dd, yyyy", Locale.getDefault()).format(Date(item.timestamp))
+        val headerTitle = if (item.type == HistoryType.CONVERSATION) "Aeris Conversation" else "Aeris Live Captions"
+        val accentColor = if (item.type == HistoryType.CONVERSATION) Color.parseColor("#9C6FFC") else Color.parseColor("#1A73E8")
+
+        painter.drawHeader(
+            title = headerTitle,
+            subtitle = "${item.title} ($dateStr)",
+            accentColor = accentColor
+        )
+
+        painter.addSpacing(24f)
+
+        item.content.forEach { line ->
+            painter.drawHistoryLine(line)
+            painter.addSpacing(12f)
+        }
+
+        painter.finish()
+
+        val filename = "Aeris_${item.type.name}_${System.currentTimeMillis()}.pdf"
+        return saveToStorage(context.applicationContext, document, filename)
             .also { document.close() }
     }
 
