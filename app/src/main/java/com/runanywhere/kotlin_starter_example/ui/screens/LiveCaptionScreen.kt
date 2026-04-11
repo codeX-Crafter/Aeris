@@ -43,6 +43,7 @@ import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.foundation.layout.navigationBarsPadding
 
 @Composable
 fun LiveCaptionScreen(
@@ -161,6 +162,7 @@ fun LiveCaptionScreen(
         }
     ) {
         Scaffold(
+            containerColor = Color(0xFFF8F9FA),
             topBar = {
                 Box(
                     modifier = Modifier
