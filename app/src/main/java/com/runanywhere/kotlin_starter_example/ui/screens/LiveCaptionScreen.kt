@@ -64,7 +64,7 @@ fun LiveCaptionScreen(
 
     // ── PDF Export Observation ────────────────────────────────
     val exportState by mainViewModel.exportState.collectAsState(ExportState.Idle)
-    
+
     LaunchedEffect(exportState) {
         when (val state = exportState) {
             is ExportState.Success -> {
@@ -162,7 +162,7 @@ fun LiveCaptionScreen(
         }
     ) {
         Scaffold(
-            containerColor = Color(0xFFF8F9FA),
+            containerColor = Color.Transparent,
             topBar = {
                 Box(
                     modifier = Modifier
@@ -178,7 +178,7 @@ fun LiveCaptionScreen(
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                         }
                         Text("Live Captions", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
-                        
+
                         if (captions.isNotEmpty()) {
                             IconButton(onClick = {
                                 val historyContent = captions.map { HistoryContentLine(it.text, fromOther = true, it.timestamp) }
@@ -199,7 +199,9 @@ fun LiveCaptionScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
+                    .padding(
+                        top = padding.calculateTopPadding()
+                    )
                     .background(Color(0xFFF8F9FA))
             ) {
                 // Captions list
@@ -244,9 +246,9 @@ fun LiveCaptionScreen(
                             Spacer(Modifier.width(8.dp))
                             Text(if (isLive) "Stop Captions" else "Start Live Captions")
                         }
-                        
+
                         Spacer(Modifier.width(12.dp))
-                        
+
                         IconButton(
                             onClick = { mainViewModel.exportCaptions(context, captions) },
                             enabled = captions.isNotEmpty(),

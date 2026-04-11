@@ -387,11 +387,13 @@ fun ConversationScreen(
                     }
                 }
             }
-        ) { innerPadding ->
+        ) {padding ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
+                    .padding(
+                        top = padding.calculateTopPadding()
+                    )
                     .background(Color(0xFFF8F9FA))
             ) {
                 // ── Model status bar ──────────────────────────
