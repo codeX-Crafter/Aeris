@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,8 +31,11 @@ import androidx.compose.ui.unit.*
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.runanywhere.kotlin_starter_example.data.CaptionLine
+import com.runanywhere.kotlin_starter_example.data.HistoryContentLine
+import com.runanywhere.kotlin_starter_example.data.HistoryType
 import com.runanywhere.kotlin_starter_example.services.ModelService
 import com.runanywhere.kotlin_starter_example.viewmodel.ExportState
+import com.runanywhere.kotlin_starter_example.viewmodel.HistoryViewModel
 import com.runanywhere.kotlin_starter_example.viewmodel.MainViewModel
 import com.runanywhere.sdk.public.RunAnywhere
 import com.runanywhere.sdk.public.extensions.transcribe
@@ -43,12 +47,14 @@ import java.util.*
 @Composable
 fun LiveCaptionScreen(
     modelService: ModelService,
+    historyViewModel: HistoryViewModel,
     onBack: () -> Unit,
     mainViewModel: MainViewModel = viewModel()
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
     var isLive by remember { mutableStateOf(false) }
     var captions by remember { mutableStateOf(listOf<CaptionLine>()) }
@@ -79,6 +85,7 @@ fun LiveCaptionScreen(
         hasPermission = ContextCompat.checkSelfPermission(
             context, Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
+        historyViewModel.loadHistory(HistoryType.CAPTION)
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -95,51 +102,26 @@ fun LiveCaptionScreen(
         isLive = true
         captureJob = scope.launch(Dispatchers.IO) {
             val sampleRate = 16000
-            val bufferSize = AudioRecord.getMinBufferSize(
-                sampleRate,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT
-            )
+            val bufferSize = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
             try {
-                val audioRecord = AudioRecord(
-                    MediaRecorder.AudioSource.MIC,
-                    sampleRate,
-                    AudioFormat.CHANNEL_IN_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT,
-                    bufferSize * 4
-                )
+                val audioRecord = AudioRecord(MediaRecorder.AudioSource.MIC, sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize * 4)
                 audioRecord.startRecording()
-
                 while (isActive && isLive) {
                     val out = ByteArrayOutputStream()
                     val buffer = ByteArray(bufferSize)
                     val targetBytes = sampleRate * 2 * 3
-
                     while (out.size() < targetBytes && isActive && isLive) {
                         val read = audioRecord.read(buffer, 0, buffer.size)
                         if (read > 0) out.write(buffer, 0, read)
                     }
-
                     if (!isActive || !isLive) break
-
-                    val audioBytes = out.toByteArray()
-                    if (audioBytes.isNotEmpty()) {
-                        try {
-                            val transcript = RunAnywhere.transcribe(audioBytes).trim()
-                            if (transcript.isNotBlank()) {
-                                withContext(Dispatchers.Main) {
-                                    captions = captions + CaptionLine(text = transcript)
-                                }
-                            }
-                        } catch (e: Exception) {
-                            // Continue on error
-                        }
+                    val transcript = RunAnywhere.transcribe(out.toByteArray()).trim()
+                    if (transcript.isNotBlank()) {
+                        withContext(Dispatchers.Main) { captions = captions + CaptionLine(text = transcript) }
                     }
                 }
-
                 audioRecord.stop()
                 audioRecord.release()
-
             } catch (e: SecurityException) {
                 withContext(Dispatchers.Main) { isLive = false }
             }
@@ -152,223 +134,149 @@ fun LiveCaptionScreen(
         captureJob = null
     }
 
-    DisposableEffect(Unit) {
-        onDispose { captureJob?.cancel() }
+    fun saveToHistoryAndExit() {
+        if (captions.isNotEmpty()) {
+            val historyContent = captions.map { HistoryContentLine(it.text, fromOther = true, it.timestamp) }
+            historyViewModel.saveSession(HistoryType.CAPTION, historyContent)
+        }
+        onBack()
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFF8F9FA))
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                modifier = Modifier.fillMaxWidth(0.85f),
+                drawerContainerColor = Color.White
+            ) {
+                HistoryDrawerContent(
+                    historyViewModel = historyViewModel,
+                    type = HistoryType.CAPTION,
+                    onItemSelected = { item ->
+                        captions = item.content.map { CaptionLine(text = it.text, timestamp = it.timestamp) }
+                        scope.launch { drawerState.close() }
+                    }
+                )
+            }
+        }
     ) {
-        // ── Header ────────────────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.linearGradient(listOf(Color(0xFF6FB1FC), Color(0xFFA7C6FF)))
-                )
-                .padding(horizontal = 20.dp, vertical = 20.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
-                }
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "Live Captions",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    modifier = Modifier.weight(1f)
-                )
-                
-                // EXPORT BUTTON
-                IconButton(
-                    onClick = { mainViewModel.exportCaptions(context, captions) },
-                    enabled = captions.isNotEmpty() && exportState !is ExportState.Loading
-                ) {
-                    if (exportState is ExportState.Loading) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
-                    } else {
-                        Icon(Icons.Default.Share, "Export PDF", tint = Color.White)
-                    }
-                }
-
-                if (isLive) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50.dp))
-                            .background(Color.Red.copy(alpha = 0.2f))
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(Color.Red)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            "LIVE",
-                            fontSize = 11.sp,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-        }
-
-        // ── Model warning ─────────────────────────────────────────
-        if (!modelService.isSTTLoaded) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFFFFD166).copy(alpha = 0.15f)
-                )
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = Color(0xFFFFD166),
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "STT model not loaded",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF1A2340)
-                        )
-                        Text(
-                            "Download it from the Home screen first",
-                            fontSize = 12.sp,
-                            color = Color(0xFF6B7A9A)
-                        )
-                    }
-                }
-            }
-        }
-
-        // ── Permission warning ────────────────────────────────────
-        if (!hasPermission) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFFFF6B6B).copy(alpha = 0.1f)
-                )
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Mic,
-                        contentDescription = null,
-                        tint = Color(0xFFFF6B6B)
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        "Mic permission needed",
-                        modifier = Modifier.weight(1f),
-                        fontSize = 14.sp,
-                        color = Color(0xFF1A2340)
-                    )
-                    TextButton(onClick = {
-                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                    }) {
-                        Text("Grant", color = Color(0xFF6FB1FC))
-                    }
-                }
-            }
-        }
-
-        // ── Captions area ─────────────────────────────────────────
-        Box(modifier = Modifier.weight(1f)) {
-            if (captions.isEmpty()) {
+        Scaffold(
+            topBar = {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Brush.linearGradient(listOf(Color(0xFF6FB1FC), Color(0xFFA7C6FF))))
+                        .padding(top = 12.dp, bottom = 12.dp, start = 8.dp, end = 16.dp)
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.ClosedCaption,
-                            contentDescription = null,
-                            tint = Color(0xFFB0B0B0),
-                            modifier = Modifier.size(64.dp)
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            "Captions will appear here",
-                            fontSize = 16.sp,
-                            color = Color(0xFF6B7A9A)
-                        )
-                        Text(
-                            "Tap the mic button to start",
-                            fontSize = 13.sp,
-                            color = Color(0xFFB0B0B0)
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Default.Menu, contentDescription = "History", tint = Color.White)
+                        }
+                        IconButton(onClick = { saveToHistoryAndExit() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        }
+                        Text("Live Captions", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
+                        
+                        if (captions.isNotEmpty()) {
+                            IconButton(onClick = {
+                                val historyContent = captions.map { HistoryContentLine(it.text, fromOther = true, it.timestamp) }
+                                historyViewModel.saveSession(HistoryType.CAPTION, historyContent)
+                                captions = emptyList()
+                            }) {
+                                Icon(Icons.Default.Add, "New Session", tint = Color.White)
+                            }
+                        }
+
+                        if (isLive) {
+                            LiveBadge()
+                        }
                     }
                 }
-            } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+            }
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .background(Color(0xFFF8F9FA))
+            ) {
+                // Captions list
+                Box(modifier = Modifier.weight(1f)) {
+                    if (captions.isEmpty()) {
+                        EmptyCaptionsState()
+                    } else {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(items = captions, key = { it.timestamp }) { caption ->
+                                CaptionLineCard(caption = caption)
+                            }
+                        }
+                    }
+                }
+
+                // Control bar
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(8.dp)
                 ) {
-                    items(items = captions, key = { it.timestamp }) { caption ->
-                        CaptionLineCard(caption = caption)
+                    Row(
+                        modifier = Modifier.padding(20.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = { if (isLive) stopCaption() else startCaption() },
+                            modifier = Modifier.weight(1f).height(56.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isLive) Color(0xFFFF6B6B) else Color(0xFF6FB1FC)
+                            ),
+                            enabled = modelService.isSTTLoaded && hasPermission
+                        ) {
+                            Icon(if (isLive) Icons.Default.Stop else Icons.Default.Mic, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(if (isLive) "Stop Captions" else "Start Live Captions")
+                        }
+                        
+                        Spacer(Modifier.width(12.dp))
+                        
+                        IconButton(
+                            onClick = { mainViewModel.exportCaptions(context, captions) },
+                            enabled = captions.isNotEmpty(),
+                            modifier = Modifier.size(56.dp).background(Color(0xFFF0F2F8), CircleShape)
+                        ) {
+                            Icon(Icons.Default.Share, "Export", tint = Color(0xFF6FB1FC))
+                        }
                     }
                 }
             }
         }
+    }
+}
 
-        // ── Start/Stop button ─────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color.White)
-                .padding(horizontal = 20.dp, vertical = 16.dp)
-        ) {
-            Button(
-                onClick = { if (isLive) stopCaption() else startCaption() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isLive) Color(0xFFFF6B6B) else Color(0xFF6FB1FC)
-                ),
-                enabled = modelService.isSTTLoaded && hasPermission
-            ) {
-                Icon(
-                    imageVector = if (isLive) Icons.Default.Stop else Icons.Default.Mic,
-                    contentDescription = null
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = if (isLive) "Stop Captions" else "Start Live Captions",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
+@Composable
+private fun LiveBadge() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.clip(RoundedCornerShape(50.dp)).background(Color.Red.copy(alpha = 0.2f)).padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color.Red))
+        Spacer(Modifier.width(4.dp))
+        Text("LIVE", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun EmptyCaptionsState() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Default.ClosedCaption, null, modifier = Modifier.size(64.dp), tint = Color.LightGray)
+            Text("Captions will appear here", color = Color.Gray)
         }
     }
 }
@@ -376,12 +284,6 @@ fun LiveCaptionScreen(
 @Composable
 private fun CaptionLineCard(caption: CaptionLine) {
     val timeFormat = SimpleDateFormat("h:mm:ss a", Locale.getDefault())
-    val confidenceColor = when {
-        caption.confidence >= 0.8f -> Color(0xFF6BCB77)
-        caption.confidence >= 0.5f -> Color(0xFFFFD166)
-        else                       -> Color(0xFFFF6B6B)
-    }
-
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -389,30 +291,9 @@ private fun CaptionLineCard(caption: CaptionLine) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = timeFormat.format(Date(caption.timestamp)),
-                    fontSize = 11.sp,
-                    color = Color(0xFF6B7A9A)
-                )
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(confidenceColor)
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = caption.text,
-                fontSize = 16.sp,
-                color = Color(0xFF1A2340),
-                lineHeight = 24.sp
-            )
+            Text(timeFormat.format(Date(caption.timestamp)), fontSize = 11.sp, color = Color.Gray)
+            Spacer(Modifier.height(4.dp))
+            Text(caption.text, fontSize = 16.sp, color = Color.Black, lineHeight = 24.sp)
         }
     }
 }

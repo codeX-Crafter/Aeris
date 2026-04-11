@@ -17,6 +17,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,10 +30,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import androidx.core.content.ContextCompat
+import com.runanywhere.kotlin_starter_example.data.HistoryContentLine
+import com.runanywhere.kotlin_starter_example.data.HistoryType
+import com.runanywhere.kotlin_starter_example.data.SyncedHistoryItem
 import com.runanywhere.kotlin_starter_example.services.ModelService
 import com.runanywhere.kotlin_starter_example.services.playWavBytes
+import com.runanywhere.kotlin_starter_example.viewmodel.HistoryViewModel
 import com.runanywhere.sdk.public.RunAnywhere
 import com.runanywhere.sdk.public.extensions.TTS.TTSOptions
 import com.runanywhere.sdk.public.extensions.chat
@@ -63,11 +70,13 @@ enum class ConversationState {
 @Composable
 fun ConversationScreen(
     modelService: ModelService,
+    historyViewModel: HistoryViewModel,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
     var messages by remember { mutableStateOf(listOf<ConversationMessage>()) }
     var myReply by remember { mutableStateOf("") }
@@ -87,6 +96,7 @@ fun ConversationScreen(
         hasPermission = ContextCompat.checkSelfPermission(
             context, Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
+        historyViewModel.loadHistory(HistoryType.CONVERSATION)
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -296,316 +306,291 @@ fun ConversationScreen(
         }
     }
 
-    // ── Cleanup ───────────────────────────────────────────────
-    DisposableEffect(Unit) {
-        onDispose {
-            listenJob?.cancel()
+    // ── Save History Logic ────────────────────────────────────
+    fun saveToHistoryAndExit() {
+        if (messages.isNotEmpty()) {
+            val historyContent = messages.map { 
+                HistoryContentLine(it.text, fromOther = it.isFromOther, it.timestamp) 
+            }
+            historyViewModel.saveSession(HistoryType.CONVERSATION, historyContent)
         }
+        onBack()
     }
 
-    // ── UI ────────────────────────────────────────────────────
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFF8F9FA))
-    ) {
-
-        // ── Header ────────────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Brush.linearGradient(listOf(softBlue, Color(0xFFA7C6FF))))
-                .padding(horizontal = 20.dp, vertical = 20.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
+    // ── Sidebar History Drawer ────────────────────────────────
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                modifier = Modifier.fillMaxWidth(0.85f),
+                drawerContainerColor = Color.White
             ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        Icons.Default.ArrowBack,
-                        contentDescription = "Back",
-                        tint = Color.White
-                    )
-                }
-                Spacer(Modifier.width(8.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "Conversation",
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        "Listen → Read → Reply",
-                        fontSize = 13.sp,
-                        color = Color.White.copy(alpha = 0.8f)
-                    )
-                }
-                // ── State indicator badge ──────────────────────
-                ConversationStateBadge(state = conversationState)
-            }
-        }
-
-        // ── Model status bar ──────────────────────────────────
-        if (!sttReady || !ttsReady) {
-            ModelStatusBar(
-                sttReady = sttReady,
-                ttsReady = ttsReady,
-                llmReady = llmReady
-            )
-        }
-
-        // ── Error message ─────────────────────────────────────
-        errorMessage?.let { error ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(red.copy(alpha = 0.08f))
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    Icons.Default.Warning,
-                    contentDescription = null,
-                    tint = red,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(error, fontSize = 12.sp, color = red, modifier = Modifier.weight(1f))
-                IconButton(
-                    onClick = { errorMessage = null },
-                    modifier = Modifier.size(20.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Close,
-                        contentDescription = "Dismiss",
-                        tint = red,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
-            }
-        }
-
-        // ── Messages ──────────────────────────────────────────
-        Box(modifier = Modifier.weight(1f)) {
-            if (messages.isEmpty()) {
-                ConversationEmptyState()
-            } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(
-                        items = messages,
-                        key = { it.timestamp }
-                    ) { msg ->
-                        ConversationBubble(message = msg)
+                HistoryDrawerContent(
+                    historyViewModel = historyViewModel,
+                    type = HistoryType.CONVERSATION,
+                    onItemSelected = { item ->
+                        messages = item.content.map { 
+                            ConversationMessage(it.text, it.fromOther, it.timestamp) 
+                        }
+                        scope.launch { drawerState.close() }
                     }
-                    item { Spacer(Modifier.height(8.dp)) }
-                }
+                )
             }
-
-            // ── Generating indicator ───────────────────────────
-            if (conversationState == ConversationState.GENERATING_SUGGESTIONS) {
+        }
+    ) {
+        // ── Main UI ───────────────────────────────────────────
+        Scaffold(
+            topBar = {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 8.dp)
-                        .clip(RoundedCornerShape(50.dp))
-                        .background(purple.copy(alpha = 0.1f))
-                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                        .fillMaxWidth()
+                        .background(Brush.linearGradient(listOf(softBlue, Color(0xFFA7C6FF))))
+                        .padding(top = 12.dp, bottom = 12.dp, start = 8.dp, end = 16.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(12.dp),
-                            color = purple,
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            "Generating replies…",
-                            fontSize = 12.sp,
-                            color = purple
-                        )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Default.Menu, contentDescription = "History", tint = Color.White)
+                        }
+                        IconButton(onClick = { saveToHistoryAndExit() }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = Color.White
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Conversation",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            if (conversationState != ConversationState.IDLE) {
+                                ConversationStateBadge(state = conversationState)
+                            }
+                        }
+                        if (messages.isNotEmpty()) {
+                            IconButton(onClick = { 
+                                val historyContent = messages.map { HistoryContentLine(it.text, fromOther = it.isFromOther, it.timestamp) }
+                                historyViewModel.saveSession(HistoryType.CONVERSATION, historyContent)
+                                messages = emptyList() 
+                            }) {
+                                Icon(Icons.Default.Add, contentDescription = "New Chat", tint = Color.White)
+                            }
+                        }
                     }
                 }
             }
-        }
-
-        // ── Bottom panel ──────────────────────────────────────
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-
-                // ── Suggestions ───────────────────────────────
-                if (suggestions.isNotEmpty()) {
-                    Text(
-                        "Suggested replies",
-                        fontSize = 11.sp,
-                        color = Color(0xFF6B7A9A),
-                        modifier = Modifier.padding(bottom = 8.dp)
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .background(Color(0xFFF8F9FA))
+            ) {
+                // ── Model status bar ──────────────────────────
+                if (!sttReady || !ttsReady) {
+                    ModelStatusBar(
+                        sttReady = sttReady,
+                        ttsReady = ttsReady,
+                        llmReady = llmReady
                     )
-                    LazyRow(
+                }
+
+                // ── Error message ─────────────────────────────
+                errorMessage?.let { error ->
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(items = suggestions) { suggestion: String ->
-                            SuggestionChip(
-                                text = suggestion,
-                                onTap = { myReply = suggestion },
-                                onSpeak = { speakMyReply(suggestion) },
-                                purple = purple
-                            )
-                        }
-                    }
-                }
-
-                // ── Listen button ─────────────────────────────
-                val isListening = conversationState == ConversationState.LISTENING
-                val isTranscribing = conversationState == ConversationState.TRANSCRIBING
-                val isSpeaking = conversationState == ConversationState.SPEAKING
-                val isGenerating = conversationState == ConversationState.GENERATING_SUGGESTIONS
-                val isBusy = conversationState != ConversationState.IDLE
-
-                Button(
-                    onClick = {
-                        if (isListening || isTranscribing) {
-                            listenJob?.cancel()
-                            conversationState = ConversationState.IDLE
-                        } else {
-                            listenForOther()
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = when {
-                            isListening    -> red
-                            isTranscribing -> Color(0xFFFFD166)
-                            else           -> softBlue
-                        }
-                    ),
-                    enabled = sttReady && hasPermission && !isSpeaking && !isGenerating
-                ) {
-                    when {
-                        isListening -> {
-                            PulsingDot(color = Color.White)
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                "Listening… tap to stop",
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                        isTranscribing -> {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                color = Color.White,
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text("Transcribing…", fontWeight = FontWeight.Medium)
-                        }
-                        else -> {
-                            Icon(Icons.Default.Hearing, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                "Listen (5 sec)",
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(10.dp))
-
-                // ── Reply input + speak ───────────────────────
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = myReply,
-                        onValueChange = { myReply = it },
-                        modifier = Modifier.weight(1f),
-                        placeholder = {
-                            Text(
-                                "Type your reply…",
-                                color = Color(0xFFB0B0B0)
-                            )
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color(0xFF1A2340),
-                            unfocusedTextColor = Color(0xFF1A2340),
-                            focusedBorderColor = purple,
-                            unfocusedBorderColor = Color(0xFFEEF0F5)
-                        ),
-                        maxLines = 3,
-                        enabled = !isSpeaking
-                    )
-
-                    FloatingActionButton(
-                        onClick = { speakMyReply() },
-                        modifier = Modifier.size(52.dp),
-                        containerColor = if (myReply.isBlank()) Color(0xFFEEF0F5) else purple,
-                        contentColor = if (myReply.isBlank()) Color(0xFFB0B0B0) else Color.White,
-                        elevation = FloatingActionButtonDefaults.elevation(0.dp)
-                    ) {
-                        if (isSpeaking) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(22.dp),
-                                color = Color.White,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(Icons.Default.VolumeUp, contentDescription = "Speak")
-                        }
-                    }
-                }
-
-                // ── Permission request ────────────────────────
-                if (!hasPermission) {
-                    Spacer(Modifier.height(8.dp))
-                    TextButton(
-                        onClick = {
-                            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                        },
-                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(red.copy(alpha = 0.08f))
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            Icons.Default.Mic,
+                            Icons.Default.Warning,
                             contentDescription = null,
                             tint = red,
                             modifier = Modifier.size(16.dp)
                         )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            "Grant mic permission to listen",
-                            color = red,
-                            fontSize = 13.sp
-                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(error, fontSize = 12.sp, color = red, modifier = Modifier.weight(1f))
+                        IconButton(
+                            onClick = { errorMessage = null },
+                            modifier = Modifier.size(20.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Dismiss",
+                                tint = red,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                }
+
+                // ── Messages ──────────────────────────────────
+                Box(modifier = Modifier.weight(1f)) {
+                    if (messages.isEmpty()) {
+                        ConversationEmptyState()
+                    } else {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(
+                                items = messages,
+                                key = { it.timestamp }
+                            ) { msg ->
+                                ConversationBubble(message = msg)
+                            }
+                        }
+                    }
+
+                    // ── Generating indicator ───────────────────
+                    if (conversationState == ConversationState.GENERATING_SUGGESTIONS) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 8.dp)
+                                .clip(RoundedCornerShape(50.dp))
+                                .background(purple.copy(alpha = 0.1f))
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(12.dp),
+                                    color = purple,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    "Generating replies…",
+                                    fontSize = 12.sp,
+                                    color = purple
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // ── Bottom panel ──────────────────────────────
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+
+                        // ── Suggestions ───────────────────────
+                        if (suggestions.isNotEmpty()) {
+                            LazyRow(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(items = suggestions) { suggestion: String ->
+                                    SuggestionChip(
+                                        text = suggestion,
+                                        onTap = { myReply = suggestion },
+                                        onSpeak = { speakMyReply(suggestion) },
+                                        purple = purple
+                                    )
+                                }
+                            }
+                        }
+
+                        // ── Listen button ─────────────────────
+                        Button(
+                            onClick = {
+                                if (conversationState == ConversationState.LISTENING) {
+                                    listenJob?.cancel()
+                                    conversationState = ConversationState.IDLE
+                                } else if (hasPermission) {
+                                    listenForOther()
+                                } else {
+                                    permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (conversationState == ConversationState.LISTENING) red else softBlue
+                            )
+                        ) {
+                            Icon(
+                                if (conversationState == ConversationState.LISTENING) Icons.Default.Stop else Icons.Default.Hearing,
+                                contentDescription = null
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (conversationState == ConversationState.LISTENING) "Stop Listening" else "Listen",
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+
+                        // ── Reply input + speak ───────────────
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = myReply,
+                                onValueChange = { myReply = it },
+                                modifier = Modifier.weight(1f),
+                                placeholder = {
+                                    Text(
+                                        "Type your reply…",
+                                        color = Color(0xFFB0B0B0)
+                                    )
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = Color(0xFF1A2340),
+                                    unfocusedTextColor = Color(0xFF1A2340),
+                                    focusedBorderColor = purple,
+                                    unfocusedBorderColor = Color(0xFFEEF0F5)
+                                )
+                            )
+
+                            FloatingActionButton(
+                                onClick = { speakMyReply() },
+                                modifier = Modifier.size(52.dp),
+                                containerColor = if (myReply.isBlank()) Color(0xFFEEF0F5) else purple,
+                                contentColor = if (myReply.isBlank()) Color(0xFFB0B0B0) else Color.White,
+                                elevation = FloatingActionButtonDefaults.elevation(0.dp)
+                            ) {
+                                if (conversationState == ConversationState.SPEAKING) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(22.dp),
+                                        color = Color.White,
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Speak")
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
 }
-
-// ── Sub-composables ──────────────────────────────────────────────────────────
 
 @Composable
 private fun ConversationStateBadge(state: ConversationState) {

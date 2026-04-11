@@ -7,6 +7,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.HelpCenter
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -18,20 +20,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.runanywhere.kotlin_starter_example.data.SettingsRepository
 import com.runanywhere.kotlin_starter_example.services.ModelService
+import com.runanywhere.kotlin_starter_example.viewmodel.AuthViewModel
 
 @Composable
 fun SettingsScreen(
     modelService: ModelService,
-    onHistoryClick: () -> Unit
+    authViewModel: AuthViewModel,
+    onHistoryClick: () -> Unit,
+    onLogout: () -> Unit
 ) {
     val notificationsEnabled by SettingsRepository.notificationsEnabled.collectAsState()
     val adaptiveMode by SettingsRepository.adaptiveMode.collectAsState()
     val flashEnabled by SettingsRepository.flashEnabled.collectAsState()
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
@@ -88,7 +95,7 @@ fun SettingsScreen(
         // Help & Onboarding
         SettingsSection(title = "Help & Support") {
             SettingsActionItem(
-                icon = Icons.Default.HelpCenter,
+                icon = Icons.AutoMirrored.Filled.HelpCenter,
                 label = "Show Walkthrough",
                 description = "Learn how to use Aeris again",
                 onClick = { SettingsRepository.setWalkthroughCompleted(false) }
@@ -104,6 +111,22 @@ fun SettingsScreen(
                 label = "Detection History",
                 description = "Review past sound alerts",
                 onClick = onHistoryClick
+            )
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        // Account Section
+        SettingsSection(title = "Account") {
+            SettingsActionItem(
+                icon = Icons.AutoMirrored.Filled.ExitToApp,
+                label = "Logout",
+                description = "Sign out of your account",
+                onClick = { 
+                    authViewModel.logout(context)
+                    onLogout()
+                },
+                color = Color(0xFFFF6B6B)
             )
         }
 

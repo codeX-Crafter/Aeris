@@ -33,7 +33,10 @@ import com.runanywhere.kotlin_starter_example.data.SettingsRepository
 import com.runanywhere.kotlin_starter_example.services.ModelService
 import com.runanywhere.kotlin_starter_example.ui.screens.*
 import com.runanywhere.kotlin_starter_example.ui.theme.KotlinStarterTheme
+import com.runanywhere.kotlin_starter_example.viewmodel.AuthViewModel
+import com.runanywhere.kotlin_starter_example.viewmodel.HistoryViewModel
 import com.runanywhere.kotlin_starter_example.viewmodel.MainViewModel
+import com.runanywhere.kotlin_starter_example.viewmodel.ProfileViewModel
 import com.runanywhere.sdk.core.onnx.ONNX
 import com.runanywhere.sdk.foundation.bridge.extensions.CppBridgeModelPaths
 import com.runanywhere.sdk.llm.llamacpp.LlamaCPP
@@ -157,50 +160,83 @@ fun AerisApp() {
     val navController = rememberNavController()
     val viewModel: MainViewModel = viewModel()
     val modelService: ModelService = viewModel()
+    val authViewModel: AuthViewModel = viewModel()
+    val profileViewModel: ProfileViewModel = viewModel()
+    val historyViewModel: HistoryViewModel = viewModel()
+
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentDestination = navBackStackEntry?.destination
+    
+    val showBottomBar = currentDestination?.route !in listOf("login", "signup")
 
     val items = listOf(
         Screen.Home,
         Screen.Communication,
+        Screen.Profile,
         Screen.Settings
     )
 
     Scaffold(
         bottomBar = {
-            NavigationBar(
-                containerColor = Color.White,
-                tonalElevation = 8.dp
-            ) {
-                val navBackStackEntry by navController.currentBackStackEntryAsState()
-                val currentDestination = navBackStackEntry?.destination
-                items.forEach { screen ->
-                    NavigationBarItem(
-                        icon = { Icon(screen.icon, contentDescription = null) },
-                        label = { Text(screen.label) },
-                        selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
-                        onClick = {
-                            navController.navigate(screen.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
+            if (showBottomBar) {
+                NavigationBar(
+                    containerColor = Color.White,
+                    tonalElevation = 8.dp
+                ) {
+                    items.forEach { screen ->
+                        NavigationBarItem(
+                            icon = { Icon(screen.icon, contentDescription = null) },
+                            label = { Text(screen.label) },
+                            selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
+                            onClick = {
+                                navController.navigate(screen.route) {
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color(0xFF6FB1FC),
-                            selectedTextColor = Color(0xFF6FB1FC),
-                            indicatorColor = Color(0xFF6FB1FC).copy(alpha = 0.1f)
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Color(0xFF6FB1FC),
+                                selectedTextColor = Color(0xFF6FB1FC),
+                                indicatorColor = Color(0xFF6FB1FC).copy(alpha = 0.1f)
+                            )
                         )
-                    )
+                    }
                 }
             }
         }
     ) { innerPadding ->
         NavHost(
             navController = navController, 
-            startDestination = Screen.Home.route,
+            startDestination = if (authViewModel.currentUser != null) Screen.Home.route else "login",
             modifier = Modifier.padding(innerPadding)
         ) {
+            composable("login") {
+                LoginScreen(
+                    authViewModel = authViewModel,
+                    onLoginSuccess = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo("login") { inclusive = true }
+                        }
+                    },
+                    onNavigateToSignUp = { navController.navigate("signup") }
+                )
+            }
+
+            composable("signup") {
+                SignupScreen(
+                    authViewModel = authViewModel,
+                    onSignupSuccess = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo("signup") { inclusive = true }
+                        }
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
             composable(Screen.Home.route) {
                 HomeScreen(
                     viewModel = viewModel,
@@ -218,20 +254,47 @@ fun AerisApp() {
                 )
             }
 
+            composable(Screen.Profile.route) {
+                ProfileScreen(profileViewModel = profileViewModel)
+            }
+
             composable(Screen.Settings.route) {
                 SettingsScreen(
                     modelService = modelService,
-                    onHistoryClick = { navController.navigate("history") }
+                    authViewModel = authViewModel,
+                    onHistoryClick = { navController.navigate("history") },
+                    onLogout = {
+                        navController.navigate("login") {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
                 )
             }
 
             // ── Sub-screens (accessible via communication/home) ──
             composable("sensitivity") { SensitivityScreen(onBack = { navController.popBackStack() }) }
             composable("haptics") { HapticsScreen(onBack = { navController.popBackStack() }) }
-            composable("conversation") { ConversationScreen(modelService = modelService, onBack = { navController.popBackStack() }) }
+            composable("conversation") { 
+                ConversationScreen(
+                    modelService = modelService, 
+                    historyViewModel = historyViewModel,
+                    onBack = { navController.popBackStack() }
+                ) 
+            }
             composable("voice_proxy") { VoiceProxyScreen(modelService = modelService, onBack = { navController.popBackStack() }) }
-            composable("captions") { LiveCaptionScreen(modelService = modelService, onBack = { navController.popBackStack() }) }
-            composable("history") { HistoryScreen(viewModel = viewModel, onBack = { navController.popBackStack() }) }
+            composable("captions") { 
+                LiveCaptionScreen(
+                    modelService = modelService, 
+                    historyViewModel = historyViewModel,
+                    onBack = { navController.popBackStack() }
+                ) 
+            }
+            composable("history") { 
+                HistoryScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
+                ) 
+            }
         }
     }
 }
