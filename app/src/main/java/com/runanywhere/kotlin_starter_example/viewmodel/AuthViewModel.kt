@@ -11,7 +11,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import com.google.firebase.auth.AuthResult
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
@@ -126,11 +125,17 @@ class AuthViewModel : ViewModel() {
     }
 
     fun logout(context: Context) {
+        // Perform sign out and update state immediately to avoid race conditions with navigation
+        auth.signOut()
+        _authState.value = AuthState.Idle
+        
         viewModelScope.launch {
-            auth.signOut()
-            val credentialManager = CredentialManager.create(context)
-            credentialManager.clearCredentialState(ClearCredentialStateRequest())
-            _authState.value = AuthState.Idle
+            try {
+                val credentialManager = CredentialManager.create(context)
+                credentialManager.clearCredentialState(ClearCredentialStateRequest())
+            } catch (e: Exception) {
+                Log.e("AuthViewModel", "Error clearing credentials", e)
+            }
         }
     }
 }

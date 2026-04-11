@@ -161,12 +161,13 @@ fun LiveCaptionScreen(
         }
     ) {
         Scaffold(
+            containerColor = Color(0xFFF8F9FA), // Fix black rectangle by applying background color here
             topBar = {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(Brush.linearGradient(listOf(Color(0xFF6FB1FC), Color(0xFFA7C6FF))))
-                        .padding(top = 12.dp, bottom = 12.dp, start = 8.dp, end = 16.dp)
+                        .padding(top = 12.dp, bottom = 12.dp, start = 8.dp, end = 8.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
@@ -177,6 +178,14 @@ fun LiveCaptionScreen(
                         }
                         Text("Live Captions", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
                         
+                        // SHARE BUTTON moved to top bar
+                        IconButton(
+                            onClick = { mainViewModel.exportCaptions(context, captions) },
+                            enabled = captions.isNotEmpty()
+                        ) {
+                            Icon(Icons.Default.Share, "Export", tint = Color.White)
+                        }
+
                         if (captions.isNotEmpty()) {
                             IconButton(onClick = {
                                 val historyContent = captions.map { HistoryContentLine(it.text, fromOther = true, it.timestamp) }
@@ -198,7 +207,6 @@ fun LiveCaptionScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .background(Color(0xFFF8F9FA))
             ) {
                 // Captions list
                 Box(modifier = Modifier.weight(1f)) {
@@ -231,7 +239,7 @@ fun LiveCaptionScreen(
                     ) {
                         Button(
                             onClick = { if (isLive) stopCaption() else startCaption() },
-                            modifier = Modifier.weight(1f).height(56.dp),
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (isLive) Color(0xFFFF6B6B) else Color(0xFF6FB1FC)
@@ -241,16 +249,6 @@ fun LiveCaptionScreen(
                             Icon(if (isLive) Icons.Default.Stop else Icons.Default.Mic, null)
                             Spacer(Modifier.width(8.dp))
                             Text(if (isLive) "Stop Captions" else "Start Live Captions")
-                        }
-                        
-                        Spacer(Modifier.width(12.dp))
-                        
-                        IconButton(
-                            onClick = { mainViewModel.exportCaptions(context, captions) },
-                            enabled = captions.isNotEmpty(),
-                            modifier = Modifier.size(56.dp).background(Color(0xFFF0F2F8), CircleShape)
-                        ) {
-                            Icon(Icons.Default.Share, "Export", tint = Color(0xFF6FB1FC))
                         }
                     }
                 }

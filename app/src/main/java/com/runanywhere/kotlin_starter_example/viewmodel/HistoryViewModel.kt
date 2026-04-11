@@ -79,47 +79,68 @@ class HistoryViewModel : ViewModel() {
         _searchQuery.value = query
     }
 
+    /**
+     * UI Wrapper for saving a session
+     */
     fun saveSession(type: HistoryType, content: List<HistoryContentLine>) {
-        if (content.isEmpty()) return
-        val uid = auth.currentUser?.uid ?: return
-        
         viewModelScope.launch {
-            try {
-                // 1. Generate Title via LLM
-                val contextText = content.take(10).joinToString("\n") { it.text }
-                val prompt = "Generate a 2-4 word title for this conversation snippet. Respond with ONLY the title.\nSnippet: $contextText"
-                
-                var title = try {
-                    withContext(Dispatchers.IO) {
-                        RunAnywhere.chat(prompt).trim().removeSurrounding("\"").removeSurrounding("'")
-                    }
-                } catch (e: Exception) {
-                    if (type == HistoryType.CONVERSATION) "Conversation" else "Live Captions"
-                }
-                
-                if (title.isBlank() || title.length > 50) {
-                    title = if (type == HistoryType.CONVERSATION) "Conversation" else "Live Captions"
-                }
+            saveOrUpdateSession(null, type, content)
+        }
+    }
 
-                // 2. Save to Firestore
+    /**
+     * Saves a new session or updates an existing one.
+     * Returns the ID of the saved session.
+     */
+    suspend fun saveOrUpdateSession(
+        existingId: String?,
+        type: HistoryType,
+        content: List<HistoryContentLine>,
+        customTitle: String? = null
+    ): String? {
+        if (content.isEmpty()) return existingId
+        val uid = auth.currentUser?.uid ?: return existingId
+        
+        return try {
+            val id = existingId ?: UUID.randomUUID().toString()
+            
+            // Generate title only for new sessions if no custom title is provided
+            val finalTitle = when {
+                customTitle != null -> customTitle
+                existingId != null -> null // Don't overwrite existing title if updating
+                else -> {
+                    val contextText = content.take(10).joinToString("\n") { it.text }
+                    val prompt = "Generate a 2-4 word title for this conversation snippet. Respond with ONLY the title.\nSnippet: $contextText"
+                    try {
+                        withContext(Dispatchers.IO) {
+                            RunAnywhere.chat(prompt).trim().removeSurrounding("\"").removeSurrounding("'")
+                        }
+                    } catch (e: Exception) {
+                        if (type == HistoryType.CONVERSATION) "Conversation" else "Live Captions"
+                    }
+                }
+            }
+
+            val docRef = db.collection("users").document(uid).collection("history").document(id)
+            
+            if (existingId == null) {
                 val item = SyncedHistoryItem(
-                    id = UUID.randomUUID().toString(),
+                    id = id,
                     type = type,
-                    title = title,
+                    title = finalTitle ?: (if (type == HistoryType.CONVERSATION) "Conversation" else "Live Captions"),
                     timestamp = System.currentTimeMillis(),
                     content = content
                 )
-                
-                db.collection("users")
-                    .document(uid)
-                    .collection("history")
-                    .document(item.id)
-                    .set(item)
-                    .await()
-                
-            } catch (e: Exception) {
-                Log.e("HistoryViewModel", "Error saving session", e)
+                docRef.set(item).await()
+            } else {
+                val updates = mutableMapOf<String, Any>("content" to content)
+                if (finalTitle != null) updates["title"] = finalTitle
+                docRef.update(updates).await()
             }
+            id
+        } catch (e: Exception) {
+            Log.e("HistoryViewModel", "Error in saveOrUpdateSession", e)
+            existingId
         }
     }
 

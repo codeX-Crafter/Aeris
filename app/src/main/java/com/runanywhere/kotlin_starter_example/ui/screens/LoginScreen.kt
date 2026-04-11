@@ -1,6 +1,7 @@
 package com.runanywhere.kotlin_starter_example.ui.screens
 
 import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -15,14 +16,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.runanywhere.kotlin_starter_example.R
 import com.runanywhere.kotlin_starter_example.viewmodel.AuthState
 import com.runanywhere.kotlin_starter_example.viewmodel.AuthViewModel
 
@@ -59,23 +64,15 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Header / Logo
-            Box(
+            // Header / Actual App Logo
+            Image(
+                painter = painterResource(id = R.drawable.img),
+                contentDescription = "Aeris Logo",
                 modifier = Modifier
-                    .size(100.dp)
-                    .background(
-                        Brush.linearGradient(listOf(Color(0xFF6FB1FC), Color(0xFFA7C6FF))),
-                        shape = RoundedCornerShape(24.dp)
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    "A",
-                    fontSize = 48.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-            }
+                    .size(120.dp)
+                    .clip(RoundedCornerShape(24.dp)),
+                contentScale = ContentScale.Fit
+            )
 
             Spacer(Modifier.height(32.dp))
 
