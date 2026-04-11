@@ -5,12 +5,14 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.ktx.auth
+import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.runanywhere.kotlin_starter_example.data.HistoryContentLine
 import com.runanywhere.kotlin_starter_example.data.HistoryType
 import com.runanywhere.kotlin_starter_example.data.SyncedHistoryItem
+import com.runanywhere.kotlin_starter_example.services.EncryptionManager
 import com.runanywhere.sdk.public.RunAnywhere
 import com.runanywhere.sdk.public.extensions.chat
 import kotlinx.coroutines.Dispatchers
@@ -34,43 +36,45 @@ class HistoryViewModel : ViewModel() {
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
 
+    private var historyListener: ListenerRegistration? = null
+
     fun loadHistory(type: HistoryType? = null) {
         val uid = auth.currentUser?.uid ?: return
-        viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                var query = db.collection("users")
-                    .document(uid)
-                    .collection("history")
-                    .orderBy("timestamp", Query.Direction.DESCENDING)
-                
-                if (type != null) {
-                    query = query.whereEqualTo("type", type.name)
-                }
+        
+        historyListener?.remove()
 
-                query.addSnapshotListener { snapshot, e ->
-                    if (e != null) {
-                        Log.e("HistoryViewModel", "Listen failed", e)
-                        return@addSnapshotListener
-                    }
-                    
-                    if (snapshot != null) {
-                        val items = snapshot.documents.mapNotNull { doc ->
-                            try {
-                                val item = doc.toObject(SyncedHistoryItem::class.java)
-                                item?.copy(id = doc.id)
-                            } catch (ex: Exception) {
-                                Log.e("HistoryViewModel", "Mapping error", ex)
-                                null
-                            }
-                        }
-                        _historyItems.value = items
+        _isLoading.value = true
+        var query = db.collection("users")
+            .document(uid)
+            .collection("history")
+            .orderBy("timestamp", Query.Direction.DESCENDING)
+        
+        if (type != null) {
+            query = query.whereEqualTo("type", type.name)
+        }
+
+        historyListener = query.addSnapshotListener { snapshot, e ->
+            _isLoading.value = false
+            if (e != null) {
+                Log.e("HistoryViewModel", "Listen failed", e)
+                return@addSnapshotListener
+            }
+            
+            if (snapshot != null) {
+                val items = snapshot.documents.mapNotNull { doc ->
+                    try {
+                        val item = doc.toObject(SyncedHistoryItem::class.java)
+                        item?.copy(
+                            id = doc.id,
+                            // Decrypt content when loading from cloud
+                            content = item.content.map { it.copy(text = EncryptionManager.decrypt(it.text, uid)) }
+                        )
+                    } catch (ex: Exception) {
+                        Log.e("HistoryViewModel", "Mapping error", ex)
+                        null
                     }
                 }
-            } catch (e: Exception) {
-                Log.e("HistoryViewModel", "Error setting up history listener", e)
-            } finally {
-                _isLoading.value = false
+                _historyItems.value = items
             }
         }
     }
@@ -79,68 +83,53 @@ class HistoryViewModel : ViewModel() {
         _searchQuery.value = query
     }
 
-    /**
-     * UI Wrapper for saving a session
-     */
     fun saveSession(type: HistoryType, content: List<HistoryContentLine>) {
-        viewModelScope.launch {
-            saveOrUpdateSession(null, type, content)
-        }
-    }
-
-    /**
-     * Saves a new session or updates an existing one.
-     * Returns the ID of the saved session.
-     */
-    suspend fun saveOrUpdateSession(
-        existingId: String?,
-        type: HistoryType,
-        content: List<HistoryContentLine>,
-        customTitle: String? = null
-    ): String? {
-        if (content.isEmpty()) return existingId
-        val uid = auth.currentUser?.uid ?: return existingId
+        if (content.isEmpty()) return
+        val uid = auth.currentUser?.uid ?: return
         
-        return try {
-            val id = existingId ?: UUID.randomUUID().toString()
-            
-            // Generate title only for new sessions if no custom title is provided
-            val finalTitle = when {
-                customTitle != null -> customTitle
-                existingId != null -> null // Don't overwrite existing title if updating
-                else -> {
-                    val contextText = content.take(10).joinToString("\n") { it.text }
-                    val prompt = "Generate a 2-4 word title for this conversation snippet. Respond with ONLY the title.\nSnippet: $contextText"
-                    try {
-                        withContext(Dispatchers.IO) {
-                            RunAnywhere.chat(prompt).trim().removeSurrounding("\"").removeSurrounding("'")
-                        }
-                    } catch (e: Exception) {
-                        if (type == HistoryType.CONVERSATION) "Conversation" else "Live Captions"
+        viewModelScope.launch {
+            try {
+                val id = UUID.randomUUID().toString()
+                
+                // 1. Generate Title via LLM (unencrypted for searchability of titles if desired, or we can encrypt it too)
+                val contextText = content.take(10).joinToString("\n") { it.text }
+                val prompt = "Generate a 2-4 word title for this conversation snippet. Respond with ONLY the title.\nSnippet: $contextText"
+                
+                var title = try {
+                    withContext(Dispatchers.IO) {
+                        RunAnywhere.chat(prompt).trim().removeSurrounding("\"").removeSurrounding("'")
                     }
+                } catch (e: Exception) {
+                    if (type == HistoryType.CONVERSATION) "Conversation" else "Live Captions"
                 }
-            }
+                
+                if (title.isBlank() || title.length > 50) {
+                    title = if (type == HistoryType.CONVERSATION) "Conversation" else "Live Captions"
+                }
 
-            val docRef = db.collection("users").document(uid).collection("history").document(id)
-            
-            if (existingId == null) {
+                // 2. Encrypt message content before saving to Firestore
+                val encryptedContent = content.map { 
+                    it.copy(text = EncryptionManager.encrypt(it.text, uid)) 
+                }
+
                 val item = SyncedHistoryItem(
                     id = id,
                     type = type,
-                    title = finalTitle ?: (if (type == HistoryType.CONVERSATION) "Conversation" else "Live Captions"),
+                    title = title,
                     timestamp = System.currentTimeMillis(),
-                    content = content
+                    content = encryptedContent
                 )
-                docRef.set(item).await()
-            } else {
-                val updates = mutableMapOf<String, Any>("content" to content)
-                if (finalTitle != null) updates["title"] = finalTitle
-                docRef.update(updates).await()
+                
+                db.collection("users")
+                    .document(uid)
+                    .collection("history")
+                    .document(item.id)
+                    .set(item)
+                    .await()
+                
+            } catch (e: Exception) {
+                Log.e("HistoryViewModel", "Error saving session", e)
             }
-            id
-        } catch (e: Exception) {
-            Log.e("HistoryViewModel", "Error in saveOrUpdateSession", e)
-            existingId
         }
     }
 
@@ -148,6 +137,8 @@ class HistoryViewModel : ViewModel() {
         val uid = auth.currentUser?.uid ?: return
         viewModelScope.launch {
             try {
+                // Snappy UI: remove from local list immediately
+                _historyItems.value = _historyItems.value.filter { it.id != itemId }
                 db.collection("users")
                     .document(uid)
                     .collection("history")
@@ -156,6 +147,7 @@ class HistoryViewModel : ViewModel() {
                     .await()
             } catch (e: Exception) {
                 Log.e("HistoryViewModel", "Error deleting item", e)
+                loadHistory() 
             }
         }
     }
@@ -164,6 +156,10 @@ class HistoryViewModel : ViewModel() {
         val uid = auth.currentUser?.uid ?: return
         viewModelScope.launch {
             try {
+                // Snappy UI: update local list immediately
+                _historyItems.value = _historyItems.value.map { 
+                    if (it.id == itemId) it.copy(title = newTitle) else it 
+                }
                 db.collection("users")
                     .document(uid)
                     .collection("history")
@@ -172,6 +168,7 @@ class HistoryViewModel : ViewModel() {
                     .await()
             } catch (e: Exception) {
                 Log.e("HistoryViewModel", "Error renaming item", e)
+                loadHistory()
             }
         }
     }
@@ -201,5 +198,10 @@ class HistoryViewModel : ViewModel() {
                 Log.e("HistoryViewModel", "Error sharing item", e)
             }
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        historyListener?.remove()
     }
 }

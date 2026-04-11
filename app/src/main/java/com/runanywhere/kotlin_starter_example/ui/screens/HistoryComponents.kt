@@ -55,6 +55,9 @@ fun HistoryDrawerContent(
             leadingIcon = { Icon(Icons.Default.Search, null, tint = Color.Gray) },
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.Black,
+                unfocusedTextColor = Color.Black,
+                focusedBorderColor = Color(0xFF6FB1FC),
                 unfocusedBorderColor = Color(0xFFEEF0F5)
             )
         )
